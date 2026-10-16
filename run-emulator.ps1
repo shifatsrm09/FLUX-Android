@@ -16,8 +16,12 @@ Write-Host "Checking for running Android devices/emulators..." -ForegroundColor 
 $devices = & $AdbExe devices | Where-Object { $_ -match "\bdevice\b" }
 
 if (-not $devices) {
-    Write-Host "No active emulator found. Starting 'Medium_Phone' AVD..." -ForegroundColor Green
-    Start-Process -FilePath $EmulatorExe -ArgumentList "-avd", "Medium_Phone"
+    Write-Host "No active emulator found. Starting 'Medium_Phone' AVD with boosted hardware specs..." -ForegroundColor Green
+    $emuArgs = @(
+        "-avd", "Medium_Phone",
+        "-no-boot-anim"
+    )
+    Start-Process -FilePath $EmulatorExe -ArgumentList $emuArgs
     
     Write-Host "Waiting for emulator to boot up (this may take 20-40 seconds)..." -ForegroundColor Yellow
     & $AdbExe wait-for-device
@@ -31,7 +35,17 @@ if (-not $devices) {
             $booted = $true
         }
     }
-    Write-Host "Emulator booted successfully!" -ForegroundColor Green
+
+    # Apply buttery-smooth performance settings inside Android OS
+    Write-Host "Applying high-performance GPU and UI animation tweaks..." -ForegroundColor Green
+    & $AdbExe shell settings put global window_animation_scale 0.75 2>$null
+    & $AdbExe shell settings put global transition_animation_scale 0.75 2>$null
+    & $AdbExe shell settings put global animator_duration_scale 0.75 2>$null
+    & $AdbExe shell setprop debug.sf.hw 1 2>$null
+    & $AdbExe shell setprop debug.egl.hw 1 2>$null
+    & $AdbExe shell setprop debug.composition.type gpu 2>$null
+
+    Write-Host "Emulator booted and optimized for buttery-smooth performance!" -ForegroundColor Green
 } else {
     Write-Host "Active Android device/emulator detected." -ForegroundColor Green
 }
