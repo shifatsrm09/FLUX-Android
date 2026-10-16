@@ -176,22 +176,17 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Mirror / Source Switcher Pills -->
-            <HorizontalScrollView
-                android:id="@+id/scroll_sources"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+            <!-- Orientation Toggle Button (Portrait / Landscape) -->
+            <ImageButton
+                android:id="@+id/btn_orientation_toggle"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:layout_marginStart="12dp"
-                android:overScrollMode="never"
-                android:scrollbars="none">
-
-                <LinearLayout
-                    android:id="@+id/layout_sources"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal" />
-            </HorizontalScrollView>
+                android:background="@drawable/bg_round_button"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_screen_rotate"
+                android:contentDescription="Toggle Screen Orientation" />
         </LinearLayout>
 
         <!-- =========================================================================

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { FluxSyncplay } from '../services/syncplayService';
 import type {
   SearchResult,
   HistoryItem,
@@ -368,46 +370,100 @@ export const FluxStore = {
   },
 
   // Teleparty management
-  hostTeleparty() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 5; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    store.teleparty = {
-      state: 'joined',
-      sessionCode: code,
-      isHost: true,
-      membersCount: 1,
-      statusText: `Teleparty: ${code}`
-    };
-    emitChange();
-  },
-
-  joinTeleparty(code: string) {
-    const upper = code.trim().toUpperCase();
+  async hostTeleparty() {
     store.teleparty = {
       state: 'connecting',
-      sessionCode: upper,
-      isHost: false,
+      sessionCode: '...',
+      isHost: true,
       membersCount: 1,
-      statusText: 'Connecting...'
+      statusText: 'Connecting to Syncplay...'
     };
     emitChange();
 
-    setTimeout(() => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const res = await FluxSyncplay.hostSession();
+        store.teleparty = {
+          state: 'joined',
+          sessionCode: res.code,
+          isHost: true,
+          membersCount: 1,
+          statusText: `Teleparty: ${res.code}`
+        };
+      } else {
+        const num = Math.floor(10000 + Math.random() * 90000).toString();
+        store.teleparty = {
+          state: 'joined',
+          sessionCode: num,
+          isHost: true,
+          membersCount: 1,
+          statusText: `Teleparty: ${num}`
+        };
+      }
+    } catch (e: any) {
+      console.error('Failed to host Teleparty session:', e);
       store.teleparty = {
-        state: 'joined',
-        sessionCode: upper,
+        state: 'idle',
+        sessionCode: '',
         isHost: false,
-        membersCount: 2,
-        statusText: `Teleparty: ${upper}`
+        membersCount: 1,
+        statusText: 'Teleparty'
       };
-      emitChange();
-    }, 600);
+    }
+    emitChange();
   },
 
-  leaveTeleparty() {
+  async joinTeleparty(code: string) {
+    const cleanCode = code.trim();
+    if (!cleanCode) return;
+
+    store.teleparty = {
+      state: 'connecting',
+      sessionCode: cleanCode,
+      isHost: false,
+      membersCount: 1,
+      statusText: 'Connecting to Syncplay...'
+    };
+    emitChange();
+
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const res = await FluxSyncplay.joinSession({ code: cleanCode });
+        store.teleparty = {
+          state: 'joined',
+          sessionCode: res.code,
+          isHost: false,
+          membersCount: 1,
+          statusText: `Teleparty: ${res.code}`
+        };
+      } else {
+        store.teleparty = {
+          state: 'joined',
+          sessionCode: cleanCode,
+          isHost: false,
+          membersCount: 2,
+          statusText: `Teleparty: ${cleanCode}`
+        };
+      }
+    } catch (e: any) {
+      console.error('Failed to join Teleparty session:', e);
+      store.teleparty = {
+        state: 'idle',
+        sessionCode: '',
+        isHost: false,
+        membersCount: 1,
+        statusText: 'Teleparty'
+      };
+    }
+    emitChange();
+  },
+
+  async leaveTeleparty() {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await FluxSyncplay.leaveSession();
+      }
+    } catch (ignored) {}
     store.teleparty = {
       state: 'idle',
       sessionCode: '',
@@ -418,6 +474,32 @@ export const FluxStore = {
     emitChange();
   }
 };
+
+// Register listeners once on native platforms
+if (Capacitor.isNativePlatform()) {
+  FluxSyncplay.addListener('memberJoined', () => {
+    store.teleparty.membersCount++;
+    emitChange();
+  });
+  FluxSyncplay.addListener('memberLeft', () => {
+    if (store.teleparty.membersCount > 1) {
+      store.teleparty.membersCount--;
+      emitChange();
+    }
+  });
+  FluxSyncplay.addListener('disconnected', () => {
+    if (store.teleparty.state !== 'idle') {
+      store.teleparty = {
+        state: 'idle',
+        sessionCode: '',
+        isHost: false,
+        membersCount: 1,
+        statusText: 'Teleparty'
+      };
+      emitChange();
+    }
+  });
+}
 
 export function useFlux() {
   const [, setTick] = useState(0);

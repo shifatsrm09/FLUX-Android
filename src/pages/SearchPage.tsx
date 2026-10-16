@@ -4,7 +4,7 @@ import { SearchResultCard } from '../components/SearchResultCard';
 import { CategoryFilterSection } from '../components/CategoryFilterSection';
 import { FluxIcon } from '../components/FluxIcon';
 import { TOP_PICKS } from '../data/topPicks';
-import { executeSearch, fetchTrending, fetchFolderItems } from '../services/searchService';
+import { executeSearch, fetchTrending, fetchFolderItems, fetchCategoryItems } from '../services/searchService';
 import type { SearchResult } from '../types';
 
 interface SearchPageProps {
@@ -47,11 +47,31 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
     });
   }, [state.activeServer]);
 
+  const loadCategoryResults = () => {
+    setIsSearching(true, 'Loading category...');
+    fetchCategoryItems(
+      state.activeServer,
+      state.selectedCategoryIds,
+      state.isAllSelected,
+      state.settings.proxyMode,
+      state.settings.customProxyUrl
+    ).then((items) => {
+      setSearchResults(items);
+      setIsSearching(false);
+    }).catch(() => {
+      setIsSearching(false);
+    });
+  };
+
   // Debounced Search Execution
   useEffect(() => {
     const q = state.searchQuery.trim();
     if (!q) {
-      setSearchResults([]);
+      if (isSearchMode) {
+        loadCategoryResults();
+      } else {
+        setSearchResults([]);
+      }
       return;
     }
 
@@ -66,11 +86,14 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
         state.settings.customProxyUrl
       ).then((results) => {
         setSearchResults(results);
+        setIsSearching(false);
+      }).catch(() => {
+        setIsSearching(false);
       });
     }, 280);
 
     return () => clearTimeout(timer);
-  }, [state.searchQuery, state.activeServer, state.selectedCategoryIds, state.isAllSelected]);
+  }, [state.searchQuery, state.activeServer, state.selectedCategoryIds, state.isAllSelected, isSearchActiveTab]);
 
   const handleSelectFolder = async (folder: SearchResult) => {
     setBrowsingFolder(folder);
@@ -100,7 +123,12 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
         state.settings.customProxyUrl
       ).then((results) => {
         setSearchResults(results);
+        setIsSearching(false);
+      }).catch(() => {
+        setIsSearching(false);
       });
+    } else {
+      loadCategoryResults();
     }
   };
 
@@ -272,6 +300,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
               onSelectionChanged={() => {
                 if (state.searchQuery.trim()) {
                   handleSearchSubmit();
+                } else {
+                  loadCategoryResults();
                 }
               }}
             />
@@ -292,8 +322,12 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
               <div className="flex items-center justify-between border-b border-[#2B2D31] pb-2">
                 <h2 className="text-sm font-bold text-white tracking-wide">
                   {state.isSearching
-                    ? `Searching for "${state.searchQuery}"...`
-                    : `${state.searchResults.length} results found for "${state.searchQuery}"`}
+                    ? state.searchQuery.trim()
+                      ? `Searching for "${state.searchQuery}"...`
+                      : 'Loading category items...'
+                    : state.searchQuery.trim()
+                    ? `${state.searchResults.length} results found for "${state.searchQuery}"`
+                    : `${state.searchResults.length} items in category`}
                 </h2>
               </div>
 
@@ -307,7 +341,9 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
               ) : state.searchResults.length === 0 ? (
                 <div className="py-20 text-center space-y-2">
                   <p className="text-sm text-[#949BA4]">
-                    No matching results found for "{state.searchQuery}".
+                    {state.searchQuery.trim()
+                      ? `No matching results found for "${state.searchQuery}".`
+                      : 'No items found in this category.'}
                   </p>
                 </div>
               ) : (

@@ -94,15 +94,15 @@ export const TelepartyModal: React.FC<TelepartyModalProps> = ({ onClose }) => {
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
               </button>
-              <span>Enter 5-character room code</span>
+              <span>Enter 5-digit room code</span>
             </div>
 
             <input
               type="text"
               maxLength={5}
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="e.g. 7K9X2"
+              onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, ''))}
+              placeholder="e.g. 48291"
               className="w-full px-3 py-2.5 rounded-xl bg-[#1E1F22] border border-[#4E5058] text-center font-mono text-lg font-bold tracking-widest text-white uppercase focus:outline-none focus:border-[#5865F2]"
               autoFocus
             />

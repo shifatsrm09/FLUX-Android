@@ -20,6 +20,9 @@ const config: CapacitorConfig = {
     captureInput: true
   },
   plugins: {
+    CapacitorHttp: {
+      enabled: true
+    },
     StatusBar: {
       backgroundColor: '#1E1F22',
       style: 'DARK',

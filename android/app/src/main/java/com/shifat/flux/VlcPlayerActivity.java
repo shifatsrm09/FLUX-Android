@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.hardware.SensorManager;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
@@ -15,6 +16,7 @@ import android.os.Looper;
 import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.OrientationEventListener;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -69,7 +71,9 @@ public class VlcPlayerActivity extends AppCompatActivity {
     private ImageButton mBtnBack;
     private TextView mTvTitle;
     private TextView mTvQuality;
-    private LinearLayout mLayoutSources;
+    private ImageButton mBtnOrientationToggle;
+    private OrientationEventListener mOrientationListener;
+    private boolean mIsLandscape = false;
 
     private TextView mTvCurrentTime;
     private SeekBar mPlayerSeekbar;
@@ -134,6 +138,10 @@ public class VlcPlayerActivity extends AppCompatActivity {
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         mPrefs = getSharedPreferences("flux_player_prefs", MODE_PRIVATE);
 
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        mIsLandscape = false;
+        setupOrientationListener();
+
         extractIntentExtras();
         initViews();
         setupLibVLC();
@@ -185,7 +193,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
         mBtnBack = findViewById(R.id.btn_back);
         mTvTitle = findViewById(R.id.tv_player_title);
         mTvQuality = findViewById(R.id.tv_player_quality);
-        mLayoutSources = findViewById(R.id.layout_sources);
+        mBtnOrientationToggle = findViewById(R.id.btn_orientation_toggle);
 
         mTvCurrentTime = findViewById(R.id.tv_current_time);
         mPlayerSeekbar = findViewById(R.id.player_seekbar);
@@ -216,53 +224,59 @@ public class VlcPlayerActivity extends AppCompatActivity {
             mPrefs.edit().putBoolean("autoplay_next", isChecked).apply();
             showOsd(isChecked ? "Autoplay Next Enabled" : "Autoplay Next Disabled");
         });
-
-        setupSourcesPills();
     }
 
-    private void setupSourcesPills() {
-        mLayoutSources.removeAllViews();
-        String sourcesJson = getIntent().getStringExtra(EXTRA_SOURCES_JSON);
-        if (sourcesJson == null || sourcesJson.isEmpty()) return;
+    private long mLastManualToggleTime = 0;
 
-        try {
-            JSONArray arr = new JSONArray(sourcesJson);
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject obj = arr.getJSONObject(i);
-                final String name = obj.optString("name", "Source " + (i + 1));
-                final String url = obj.optString("url", "");
-
-                if (url.isEmpty()) continue;
-
-                Button pill = new Button(this);
-                pill.setText(name);
-                pill.setTextSize(11f);
-                pill.setAllCaps(false);
-                pill.setPadding(32, 12, 32, 12);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        dpToPx(32)
-                );
-                lp.setMarginEnd(dpToPx(8));
-                pill.setLayoutParams(lp);
-
-                boolean isActive = url.equals(mCurrentUrl);
-                pill.setBackgroundResource(isActive ? R.drawable.bg_source_pill_active : R.drawable.bg_source_pill_inactive);
-                pill.setTextColor(0xFFFFFFFF);
-
-                pill.setOnClickListener(v -> {
-                    if (!url.equals(mCurrentUrl)) {
-                        long currentPos = mMediaPlayer != null ? mMediaPlayer.getTime() : 0;
-                        mCurrentUrl = url;
-                        setupSourcesPills();
-                        startPlayback(mCurrentUrl, currentPos);
-                        showOsd("Switched to " + name);
-                    }
-                });
-
-                mLayoutSources.addView(pill);
+    private void toggleOrientation() {
+        mLastManualToggleTime = System.currentTimeMillis();
+        if (mIsLandscape) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            mIsLandscape = false;
+            if (mBtnFullscreen != null) {
+                mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen);
             }
-        } catch (Exception ignored) {
+            showOsd("Portrait Mode");
+        } else {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            mIsLandscape = true;
+            if (mBtnFullscreen != null) {
+                mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen_exit);
+            }
+            showOsd("Landscape Mode");
+        }
+    }
+
+    private void setupOrientationListener() {
+        mOrientationListener = new OrientationEventListener(this, SensorManager.SENSOR_DELAY_NORMAL) {
+            @Override
+            public void onOrientationChanged(int orientation) {
+                if (orientation == ORIENTATION_UNKNOWN) return;
+                // Ignore sensor updates for 4 seconds after manual button tap
+                if (System.currentTimeMillis() - mLastManualToggleTime < 4000) return;
+
+                // Switch to landscape when phone physically turned sideways
+                if ((orientation >= 65 && orientation <= 115) || (orientation >= 245 && orientation <= 295)) {
+                    if (!mIsLandscape) {
+                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                        mIsLandscape = true;
+                        if (mBtnFullscreen != null) {
+                            mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen_exit);
+                        }
+                    }
+                } else if ((orientation >= 335 || orientation <= 25) || (orientation >= 155 && orientation <= 205)) {
+                    if (mIsLandscape) {
+                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                        mIsLandscape = false;
+                        if (mBtnFullscreen != null) {
+                            mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen);
+                        }
+                    }
+                }
+            }
+        };
+        if (mOrientationListener.canDetectOrientation()) {
+            mOrientationListener.enable();
         }
     }
 
@@ -372,6 +386,9 @@ public class VlcPlayerActivity extends AppCompatActivity {
 
     private void setupListeners() {
         mBtnBack.setOnClickListener(v -> finishWithResult());
+        if (mBtnOrientationToggle != null) {
+            mBtnOrientationToggle.setOnClickListener(v -> toggleOrientation());
+        }
 
         View.OnClickListener togglePlayListener = v -> {
             if (mMediaPlayer == null) return;
@@ -485,16 +502,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
     }
 
     private void toggleFullscreen() {
-        mIsFullscreen = !mIsFullscreen;
-        if (mIsFullscreen) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-            mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen_exit);
-            showOsd("Fullscreen");
-        } else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-            mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen);
-            showOsd("Windowed Mode");
-        }
+        toggleOrientation();
         hideSystemUI();
     }
 
@@ -773,6 +781,10 @@ public class VlcPlayerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (mOrientationListener != null) {
+            mOrientationListener.disable();
+            mOrientationListener = null;
+        }
         cancelHideControls();
         if (mMediaPlayer != null) {
             mMediaPlayer.stop();

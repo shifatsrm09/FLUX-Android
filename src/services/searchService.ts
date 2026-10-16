@@ -1,7 +1,6 @@
 import type { SearchResult, MediaRoot, VideoSource } from '../types';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import mediaLibraryRaw from '../data/media_library.json';
-import iccLibraryRaw from '../data/icc_library.json';
 
 // Curated lookup for instant IMDb ID resolution
 export const IMDB_MAP: Record<string, string> = {
@@ -369,6 +368,79 @@ export function buildMediaSources(
 
 
 
+async function postData(
+  url: string,
+  headers: Record<string, string>,
+  data: any,
+  timeoutMs: number = 7000
+): Promise<any> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await CapacitorHttp.post({
+        url,
+        headers,
+        data,
+        connectTimeout: timeoutMs,
+        readTimeout: timeoutMs
+      });
+      if (typeof res.data === 'string') {
+        try {
+          return JSON.parse(res.data);
+        } catch {
+          return res.data;
+        }
+      }
+      return res.data;
+    } catch (e) {
+      console.warn('CapacitorHttp.post failed for', url, e);
+      throw e;
+    }
+  } else {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: typeof data === 'string' ? data : JSON.stringify(data),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    return await res.json();
+  }
+}
+
+export async function getData(
+  url: string,
+  headers: Record<string, string> = {},
+  timeoutMs: number = 7000
+): Promise<any> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await CapacitorHttp.get({
+        url,
+        headers,
+        connectTimeout: timeoutMs,
+        readTimeout: timeoutMs
+      });
+      if (typeof res.data === 'string') {
+        try {
+          return JSON.parse(res.data);
+        } catch {
+          return res.data;
+        }
+      }
+      return res.data;
+    } catch (e) {
+      console.warn('CapacitorHttp.get failed for', url, e);
+      throw e;
+    }
+  } else {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    return await res.text();
+  }
+}
+
 export async function executeSearch(
   query: string,
   server: 1 | 2,
@@ -377,93 +449,85 @@ export async function executeSearch(
   proxyMode: string = 'auto',
   customProxyUrl: string = ''
 ): Promise<SearchResult[]> {
-  const qLower = query.trim().toLowerCase();
-  if (!qLower) return [];
+  const qTrim = query.trim();
+  if (!qTrim) return [];
 
-  // 1. Filter curated showcase library matching query
-  const catalogMatches = SHOWCASE_CATALOG.filter((item) => {
-    const titleMatch = item.title.toLowerCase().includes(qLower);
-    const groupMatch = isAllSelected || selectedCategoryIds.some((id) => id.toLowerCase().includes(item.group.toLowerCase()));
-    return titleMatch || (qLower.length > 2 && groupMatch);
-  });
-
-  // 2. ICC FTP Search (Server 2)
+  // 1. ICC FTP Search (Server 2)
   if (server === 2) {
     try {
       const iccCommandUrl = buildProxyUrl('http://10.16.100.244/command.php', proxyMode, customProxyUrl);
-      const res = await fetch(iccCommandUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-        body: `cSearch=${encodeURIComponent(query.trim())}`,
-        signal: AbortSignal.timeout(4000)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          return data.map((item: any) => {
-            const id = String(item.id || '');
-            const name = String(item.name || '').trim();
-            const playerUrl = `http://10.16.100.244/player.php?play=${id}`;
-            const poster = item.image ? `http://10.16.100.244/files/${item.image}` : undefined;
-            const imdb = lookupImdbId(name);
+      const data = await postData(
+        iccCommandUrl,
+        { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        `cSearch=${encodeURIComponent(qTrim)}`,
+        5000
+      );
 
-            const streamData = buildMediaSources(name, `/player.php?play=${id}`, 'http://10.16.100.244', imdb);
-            // Prepend ICC FTP dedicated player
-            streamData.sources.unshift({
-              name: 'ICC FTP Player (BDIX)',
-              url: playerUrl,
-              type: 'embed'
-            });
+      if (Array.isArray(data) && data.length > 0) {
+        return data.map((item: any) => {
+          const id = String(item.id || '');
+          const name = String(item.name || '').trim();
+          const playerUrl = `http://10.16.100.244/player.php?play=${id}`;
+          const poster = item.image ? `http://10.16.100.244/files/${item.image}` : undefined;
+          const imdb = lookupImdbId(name);
 
-            return {
-              title: name,
-              formattedSize: 'ICC Media',
-              isFolder: /(?:Season|Episode|Completed|S\d{1,2}E\d{1,2})/i.test(name),
-              playUrl: playerUrl,
-              embedUrl: streamData.embedUrl,
-              sources: streamData.sources,
-              rawHref: `/player.php?play=${id}`,
-              extension: 'mp4',
-              libraryName: 'ICC FTP',
-              group: 'Movies',
-              posterUrl: poster,
-              matchScore: 10
-            } as SearchResult;
+          const streamData = buildMediaSources(name, `/player.php?play=${id}`, 'http://10.16.100.244', imdb);
+          streamData.sources.unshift({
+            name: 'ICC FTP Player (BDIX)',
+            url: playerUrl,
+            type: 'embed'
           });
-        }
+
+          return {
+            title: name,
+            formattedSize: 'ICC Media',
+            isFolder: /(?:Season|Episode|Completed|S\d{1,2}E\d{1,2})/i.test(name),
+            playUrl: playerUrl,
+            embedUrl: streamData.embedUrl,
+            sources: streamData.sources,
+            rawHref: `/player.php?play=${id}`,
+            extension: 'mp4',
+            libraryName: 'ICC FTP',
+            group: 'Movies',
+            posterUrl: poster,
+            matchScore: 10
+          } as SearchResult;
+        });
       }
     } catch (e) {
-      console.warn('ICC search failed, trying fallback', e);
+      console.warn('ICC search error', e);
     }
+    return [];
   }
 
-  // 3. Live Dhaka Flix search (Server 1)
+  // 2. Live Dhaka Flix search (Server 1)
   try {
-    const roots = (server === 2 ? iccLibraryRaw : mediaLibraryRaw) as MediaRoot[];
+    const roots = mediaLibraryRaw as MediaRoot[];
     const targetRoots = isAllSelected
       ? roots
       : roots.filter((r) => selectedCategoryIds.includes(r.id));
 
-    if (server === 1 && targetRoots.length > 0) {
-      // Query top 4 relevant categories
-      const livePromises = targetRoots.slice(0, 4).map(async (root) => {
-        const payload = JSON.stringify({
+    const rootsToQuery = targetRoots.length > 0 ? targetRoots.slice(0, 5) : roots.slice(0, 5);
+
+    const livePromises = rootsToQuery.map(async (root) => {
+      try {
+        const proxiedUrl = buildProxyUrl(root.url, proxyMode, customProxyUrl);
+        const payload = {
           action: 'get',
           search: {
             href: root.href,
-            pattern: query.trim(),
+            pattern: qTrim,
             ignorecase: true
           }
-        });
-        const proxiedUrl = buildProxyUrl(root.url, proxyMode, customProxyUrl);
-        const res = await fetch(proxiedUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json;charset=utf-8' },
-          body: payload,
-          signal: AbortSignal.timeout(3500)
-        });
-        if (!res.ok) return [];
-        const data = await res.json();
+        };
+
+        const data = await postData(
+          proxiedUrl,
+          { 'Content-Type': 'application/json;charset=utf-8' },
+          payload,
+          4500
+        );
+
         const searchItems = data?.search || [];
         return searchItems.map((item: any) => {
           const href = item.href || '';
@@ -487,44 +551,103 @@ export async function executeSearch(
             matchScore: 10
           } as SearchResult;
         });
+      } catch {
+        return [];
+      }
+    });
+
+    const settled = await Promise.allSettled(livePromises);
+    const results = settled
+      .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled')
+      .flatMap((r) => r.value);
+
+    return results;
+  } catch (err) {
+    console.warn('Dhaka Flix search error', err);
+    return [];
+  }
+}
+
+// Fetch real category items when user clicks a category without typing a query
+export async function fetchCategoryItems(
+  server: 1 | 2,
+  selectedCategoryIds: string[],
+  isAllSelected: boolean,
+  proxyMode: string = 'auto',
+  customProxyUrl: string = ''
+): Promise<SearchResult[]> {
+  if (server === 2) {
+    // For ICC FTP, query popular recent entries
+    try {
+      return await executeSearch('2024', 2, selectedCategoryIds, isAllSelected, proxyMode, customProxyUrl);
+    } catch {
+      return [];
+    }
+  }
+
+  // Server 1 (Dhaka Flix)
+  const roots = mediaLibraryRaw as MediaRoot[];
+  const targetRoots = isAllSelected
+    ? roots.filter((r) => ['english_movies_1080p', 'animation_movies_1080p', 'hindi_movies'].includes(r.id))
+    : roots.filter((r) => selectedCategoryIds.includes(r.id));
+
+  const queryRoots = targetRoots.length > 0 ? targetRoots.slice(0, 3) : roots.slice(0, 3);
+
+  const promises = queryRoots.map(async (root) => {
+    try {
+      const proxiedUrl = buildProxyUrl(`${root.serverOrigin}${root.href}`, proxyMode, customProxyUrl);
+      const payload = {
+        action: 'get',
+        items: {
+          href: root.href,
+          what: 1
+        }
+      };
+
+      const data = await postData(
+        proxiedUrl,
+        { 'Content-Type': 'application/json;charset=utf-8' },
+        payload,
+        5000
+      );
+
+      const items = (data?.items || []).filter((item: any) => {
+        const decoded = decodeURIComponent(item.href || '');
+        const rootDecoded = decodeURIComponent(root.href);
+        return decoded !== rootDecoded && decoded.startsWith(rootDecoded);
       });
 
-      const liveResults = (await Promise.allSettled(livePromises))
-        .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled')
-        .flatMap((r) => r.value);
+      return items.map((item: any) => {
+        const href = item.href || '';
+        const name = href.split('/').filter(Boolean).pop() || href;
+        const cleanName = decodeURIComponent(name);
+        const isDir = href.endsWith('/') || item.size === null;
+        const imdb = lookupImdbId(cleanName);
+        const mediaSources = buildMediaSources(cleanName, href, root.serverOrigin, imdb, isDir);
 
-      if (liveResults.length > 0) {
-        return [...liveResults, ...catalogMatches];
-      }
+        return {
+          title: cleanName,
+          formattedSize: isDir ? 'Folder' : `${((item.size || 0) / (1024 * 1024)).toFixed(1)} MB`,
+          isFolder: isDir,
+          playUrl: mediaSources.playUrl,
+          embedUrl: mediaSources.embedUrl,
+          sources: mediaSources.sources,
+          rawHref: href,
+          extension: isDir ? '' : name.split('.').pop() || '',
+          libraryName: root.name,
+          group: root.group,
+          matchScore: 9
+        } as SearchResult;
+      });
+    } catch {
+      return [];
     }
-  } catch (err) {
-    console.warn('Live search fallback triggered', err);
-  }
+  });
 
-  if (catalogMatches.length > 0) {
-    return catalogMatches;
-  }
-
-  // 4. Dynamic matched result for ANY search query (Zero dead ends)
-  const cleanTitle = query.trim();
-  const matchedImdb = lookupImdbId(cleanTitle);
-  const mediaSources = buildMediaSources(cleanTitle, `/media/${encodeURIComponent(cleanTitle)}.mp4`, '', matchedImdb);
-
-  const dynamicItem: SearchResult = {
-    title: `${cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1)} (2024) 1080p BluRay x264 Dual Audio`,
-    formattedSize: '2.4 GB',
-    isFolder: false,
-    playUrl: mediaSources.playUrl,
-    embedUrl: mediaSources.embedUrl,
-    sources: mediaSources.sources,
-    extension: 'mp4',
-    rawHref: `/DHAKA-FLIX-14/English%20Movies/${encodeURIComponent(cleanTitle)}.2024.1080p.mkv`,
-    libraryName: server === 2 ? 'ICC FTP' : 'Dhaka Flix',
-    group: 'English Movies',
-    matchScore: 8
-  };
-
-  return [dynamicItem];
+  const settled = await Promise.allSettled(promises);
+  return settled
+    .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled')
+    .flatMap((r) => r.value);
 }
 
 // Fetch real files inside a folder (Dhaka Flix h5ai)
@@ -546,95 +669,71 @@ export async function fetchFolderItems(
   const proxiedUrl = buildProxyUrl(folderUrl, proxyMode, customProxyUrl);
 
   try {
-    const payload = JSON.stringify({
+    const payload = {
       action: 'get',
-      search: {
+      items: {
         href: href,
-        pattern: '',
-        ignorecase: true
+        what: 1
       }
+    };
+
+    const data = await postData(
+      proxiedUrl,
+      { 'Content-Type': 'application/json;charset=utf-8' },
+      payload,
+      5000
+    );
+
+    const items = (data?.items || []).filter((h: any) => {
+      const decoded = decodeURIComponent(h.href || '');
+      const selfDecoded = decodeURIComponent(href);
+      return decoded !== selfDecoded && decoded.startsWith(selfDecoded);
     });
 
-    const res = await fetch(proxiedUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json;charset=utf-8' },
-      body: payload,
-      signal: AbortSignal.timeout(4000)
-    });
+    if (items.length > 0) {
+      return items.map((item: any, idx: number) => {
+        const itemHref = item.href;
+        const name = decodeURIComponent(itemHref.split('/').filter(Boolean).pop() || itemHref);
+        const isDir = itemHref.endsWith('/') || item.size === null;
+        const imdb = lookupImdbId(folder.title);
+        const isTv = /(?:season|episode|s\d{1,2}e\d{1,2}|tv|series)/i.test(folder.title);
+        const mirrorEmbed = imdb
+          ? isTv
+            ? `https://autoembed.co/tv/imdb/${imdb}-1-${idx + 1}`
+            : `https://autoembed.co/movie/imdb/${imdb}`
+          : undefined;
 
-    if (res.ok) {
-      const data = await res.json();
-      const items = (data?.search || []).filter((h: any) => !h.href.endsWith('/'));
-      if (items.length > 0) {
-        return items.map((item: any, idx: number) => {
-          const itemHref = item.href;
-          const name = decodeURIComponent(itemHref.split('/').pop() || itemHref);
-          const imdb = lookupImdbId(folder.title);
-          const isTv = /(?:season|episode|s\d{1,2}e\d{1,2}|tv|series)/i.test(folder.title);
-          const mirrorEmbed = imdb
-            ? isTv
-              ? `https://autoembed.co/tv/imdb/${imdb}-1-${idx + 1}`
-              : `https://autoembed.co/movie/imdb/${imdb}`
-            : undefined;
-
-          const sources = buildMediaSources(name, itemHref, serverOrigin, imdb);
-          if (mirrorEmbed) {
-            if (!sources.sources.some(s => s.name.includes('Fast Mirror'))) {
-              sources.sources.push({
-                name: isTv ? `Fast Mirror Ep ${idx + 1}` : 'Fast Mirror (HD)',
-                url: mirrorEmbed,
-                type: 'embed'
-              });
-            }
+        const sources = buildMediaSources(name, itemHref, serverOrigin, imdb, isDir);
+        if (mirrorEmbed && !isDir) {
+          if (!sources.sources.some((s) => s.name.includes('Fast Mirror'))) {
+            sources.sources.push({
+              name: isTv ? `Fast Mirror Ep ${idx + 1}` : 'Fast Mirror (HD)',
+              url: mirrorEmbed,
+              type: 'embed'
+            });
           }
+        }
 
-          return {
-            title: name,
-            formattedSize: `${((item.size || 0) / (1024 * 1024)).toFixed(1)} MB`,
-            isFolder: false,
-            playUrl: sources.playUrl,
-            embedUrl: mirrorEmbed || sources.embedUrl,
-            sources: sources.sources,
-            rawHref: itemHref,
-            extension: name.split('.').pop() || 'mkv',
-            libraryName: folder.libraryName,
-            group: folder.group,
-            posterUrl: folder.posterUrl
-          } as SearchResult;
-        });
-      }
+        return {
+          title: name,
+          formattedSize: isDir ? 'Folder' : `${((item.size || 0) / (1024 * 1024)).toFixed(1)} MB`,
+          isFolder: isDir,
+          playUrl: sources.playUrl,
+          embedUrl: mirrorEmbed || sources.embedUrl,
+          sources: sources.sources,
+          rawHref: itemHref,
+          extension: isDir ? '' : name.split('.').pop() || 'mkv',
+          libraryName: folder.libraryName,
+          group: folder.group,
+          posterUrl: folder.posterUrl
+        } as SearchResult;
+      });
     }
   } catch (err) {
-    console.warn('Live folder fetch failed, generating clean season items', err);
+    console.warn('Live folder fetch error', err);
   }
 
-  // Graceful fallback: generate clean season episodes for this series
-  const imdb = lookupImdbId(folder.title);
-  return Array.from({ length: 6 }, (_, i) => {
-    const epNum = i + 1;
-    const epPad = epNum < 10 ? `0${epNum}` : `${epNum}`;
-    const epTitle = `${folder.title} S01E${epPad} Episode ${epNum} 1080p BluRay`;
-    const epEmbed = `https://autoembed.co/tv/imdb/${imdb || 'tt0903747'}-1-${epNum}`;
-    const epHref = `${href}S01E${epPad}.mkv`;
-    const directUrl = `${serverOrigin}${epHref}`;
-
-    return {
-      title: epTitle,
-      formattedSize: '1.2 GB',
-      isFolder: false,
-      playUrl: directUrl,
-      embedUrl: epEmbed,
-      sources: [
-        { name: 'BDIX Direct Stream', url: directUrl, type: 'video' },
-        { name: `Fast Mirror Ep ${epNum}`, url: epEmbed, type: 'embed' }
-      ],
-      rawHref: epHref,
-      extension: 'mkv',
-      libraryName: folder.libraryName,
-      group: folder.group,
-      posterUrl: folder.posterUrl
-    };
-  });
+  return [];
 }
 
 /**
@@ -650,26 +749,31 @@ export async function testServerConnection(
   let rawUrl = '';
 
   if (server === 1) {
-    rawUrl = 'http://172.16.50.4/';
+    rawUrl = 'http://172.16.50.7/DHAKA-FLIX-7/English%20Movies/';
   } else {
-    rawUrl = customUrl && customUrl.trim().length > 0 ? customUrl.trim() : 'http://10.16.100.244/';
+    rawUrl = customUrl && customUrl.trim().length > 0 ? customUrl.trim() : 'http://10.16.100.244/command.php';
   }
 
   const serverName = server === 2 ? 'ICC FTP' : 'Dhaka Flix';
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-
     const targetUrl = buildProxyUrl(rawUrl, proxyMode, customProxyUrl);
+    if (server === 2) {
+      await postData(
+        targetUrl,
+        { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        'cSearch=test',
+        4000
+      );
+    } else {
+      await postData(
+        targetUrl,
+        { 'Content-Type': 'application/json;charset=utf-8' },
+        { action: 'get', items: { href: '/DHAKA-FLIX-7/English Movies/', what: 1 } },
+        4000
+      );
+    }
 
-    await fetch(targetUrl, {
-      method: 'GET',
-      mode: 'no-cors',
-      signal: timer ? controller.signal : undefined
-    });
-
-    clearTimeout(timer);
     const latency = Date.now() - startTime;
     return {
       success: true,
@@ -681,7 +785,8 @@ export async function testServerConnection(
     return {
       success: false,
       latencyMs: latency,
-      message: `Connection failed: ${serverName} timed out or unreachable on current network`
+      message: `Connection failed: ${serverName} timed out or unreachable`
     };
   }
 }
+
