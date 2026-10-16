@@ -110,7 +110,13 @@ export const SideNavDrawer: React.FC<SideNavDrawerProps> = ({
       />
 
       {/* Slide-in Drawer */}
-      <div className="relative w-72 max-w-[85vw] h-full bg-[#15151A] border-r border-[#2B2D31] flex flex-col shadow-2xl z-10 animate-slideRight">
+      <div
+        className="relative w-72 max-w-[85vw] h-full bg-[#15151A] border-r border-[#2B2D31] flex flex-col shadow-2xl z-10 animate-slideRight"
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+        }}
+      >
         {/* Header */}
         <div className="p-6 border-b border-[#2B2D31] flex items-center justify-between">
           <div className="flex flex-col">

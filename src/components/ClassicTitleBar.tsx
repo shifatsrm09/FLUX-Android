@@ -18,11 +18,15 @@ export const ClassicTitleBar: React.FC<ClassicTitleBarProps> = ({
 }) => {
   return (
     <header
-      className={`fixed top-0 left-0 right-0 h-14 z-40 flex items-center justify-between px-4 sm:px-6 select-none transition-all duration-200 ${
+      className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 sm:px-6 select-none transition-all duration-200 ${
         overlayMode
           ? 'opacity-0 pointer-events-none'
           : 'bg-[#1E1F22]/95 backdrop-blur-md border-b border-[#2B2D31]'
       }`}
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        height: 'calc(3.5rem + env(safe-area-inset-top, 0px))'
+      }}
     >
       {/* Left: Hamburger Icon */}
       <button

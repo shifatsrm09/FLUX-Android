@@ -76,12 +76,32 @@ export const App: React.FC = () => {
       StatusBar.hide().catch(() => {});
       ScreenOrientation.unlock().catch(() => {});
     } else {
+      StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
       StatusBar.show().catch(() => {});
       StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
       StatusBar.setBackgroundColor({ color: '#1E1F22' }).catch(() => {});
       ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
     }
   }, [isPlayerActive]);
+
+  // App resume handler to restore Status Bar after returning from native VLC player
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const resumeListener = CapApp.addListener('resume', () => {
+      if (state.currentPage !== 'player') {
+        StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+        StatusBar.show().catch(() => {});
+        StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+        StatusBar.setBackgroundColor({ color: '#1E1F22' }).catch(() => {});
+        ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+      }
+    });
+
+    return () => {
+      resumeListener.then((l) => l.remove());
+    };
+  }, [state.currentPage]);
 
   return (
     <div className="relative min-h-screen bg-[#1E1F22] text-[#F2F3F5] font-sans overflow-x-hidden pb-6">
@@ -106,7 +126,12 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Stage */}
-      <main className="relative pt-14">
+      <main
+        className="relative"
+        style={{
+          paddingTop: isPlayerActive ? 0 : 'calc(3.5rem + env(safe-area-inset-top, 0px))'
+        }}
+      >
         {isPlayerActive ? (
           <PlayerView />
         ) : section === 'library' ? (
