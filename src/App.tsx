@@ -7,14 +7,7 @@ import { BookmarksView } from './pages/BookmarksView';
 import { PlayerView } from './components/PlayerView';
 import { SettingsModal } from './components/SettingsModal';
 import { DownloadsPanel } from './components/DownloadsPanel';
-import {
-  Home,
-  Search,
-  Bookmark,
-  Folder,
-  Settings,
-  Download
-} from 'lucide-react';
+import { FluxIcon } from './components/FluxIcon';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -28,6 +21,7 @@ export const App: React.FC = () => {
 
   const isPlayerActive = state.currentPage === 'player';
   const activeDownloadsCount = state.downloads.filter((d) => d.status === 'downloading').length;
+  const hasInterruptedDownloads = state.downloads.some((d) => d.status === 'error');
 
   const handleSectionChange = (sec: 'home' | 'search' | 'bookmarks' | 'library') => {
     setSection(sec);
@@ -82,14 +76,14 @@ export const App: React.FC = () => {
 
   return (
     <div className="relative min-h-screen bg-[#1E1F22] text-[#F2F3F5] font-sans overflow-x-hidden pb-16 md:pb-0">
-      {/* Top Header Bar */}
+      {/* Top Header Bar matching ClassicTitleBar.qml */}
       <ClassicTitleBar
         section={section}
         onSectionChange={handleSectionChange}
         overlayMode={isPlayerActive}
       />
 
-      {/* Main Content Area */}
+      {/* Main Content Stage */}
       <main className="relative">
         {isPlayerActive ? (
           <PlayerView />
@@ -98,76 +92,113 @@ export const App: React.FC = () => {
         ) : section === 'bookmarks' ? (
           <BookmarksView />
         ) : (
-          <SearchPage initialSearchFocused={section === 'search'} />
+          <SearchPage isSearchActiveTab={section === 'search'} />
         )}
       </main>
 
-      {/* Floating Downloads Button */}
+      {/* Bottom-Right Floating Dock: Downloads + Settings matching Main.qml lines 660-689 */}
       {!isPlayerActive && (
-        <div className="fixed bottom-20 md:bottom-6 right-5 z-40 flex items-center space-x-3 select-none">
+        <div className="fixed bottom-20 md:bottom-6 right-6 z-40 hidden sm:flex items-center space-x-2.5 select-none">
+          {/* Downloads Dock Button */}
           <button
             onClick={() => setDownloadsOpen(!downloadsOpen)}
-            className="relative w-12 h-12 rounded-full bg-[#15151A]/95 hover:bg-[#383A40] active:scale-95 border border-[#2B2D31] hover:border-[#4E5058] shadow-2xl flex items-center justify-center text-[#949BA4] hover:text-white transition-all cursor-pointer group"
+            className={`relative w-12 h-12 rounded-full border shadow-2xl flex items-center justify-center transition-all cursor-pointer group active:scale-95 ${
+              downloadsOpen
+                ? 'bg-[#383A40] border-[#4E5058]'
+                : 'bg-[#15151A]/95 hover:bg-[#383A40] border-[#2B2D31] hover:border-[#4E5058]'
+            }`}
             title="Downloads"
           >
-            <Download className="w-5 h-5 transition-transform group-hover:-translate-y-0.5" />
+            <FluxIcon
+              name="download"
+              size={22}
+              color={downloadsOpen ? '#FFFFFF' : '#949BA4'}
+              className="group-hover:text-white transition-colors"
+            />
+
+            {/* Red attention dot if interrupted */}
+            {hasInterruptedDownloads && (
+              <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-[#FF4D5E] border border-[#1E1F22]" />
+            )}
+
+            {/* Active downloads count badge */}
             {activeDownloadsCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-[#5865F2] border-2 border-[#1E1F22] text-[10px] font-bold text-white flex items-center justify-center">
                 {activeDownloadsCount}
               </span>
             )}
           </button>
+
+          {/* Settings Dock Button */}
+          <button
+            onClick={() => setSettingsOpen(!settingsOpen)}
+            className={`relative w-12 h-12 rounded-full border shadow-2xl flex items-center justify-center transition-all cursor-pointer group active:scale-95 ${
+              settingsOpen
+                ? 'bg-[#383A40] border-[#4E5058]'
+                : 'bg-[#15151A]/95 hover:bg-[#383A40] border-[#2B2D31] hover:border-[#4E5058]'
+            }`}
+            title="Settings"
+          >
+            <div className="transition-transform duration-300 ease-out group-hover:rotate-30">
+              <FluxIcon
+                name="settings"
+                size={22}
+                color={settingsOpen ? '#FFFFFF' : '#949BA4'}
+                className="group-hover:text-white transition-colors"
+              />
+            </div>
+          </button>
         </div>
       )}
 
-      {/* Android Mobile Bottom Navigation Bar */}
+      {/* Android Mobile Bottom Navigation Bar (Optimized for One-Hand Phone Usage) */}
       {!isPlayerActive && (
-        <nav className="fixed bottom-0 left-0 right-0 h-16 z-40 bg-[#1E1F22]/95 backdrop-blur-lg border-t border-[#2B2D31] flex items-center justify-around px-2 select-none md:hidden">
+        <nav className="fixed bottom-0 left-0 right-0 h-16 z-40 bg-[#1E1F22]/95 backdrop-blur-lg border-t border-[#2B2D31] flex items-center justify-around px-2 select-none sm:hidden">
           <button
             onClick={() => handleSectionChange('home')}
-            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors ${
+            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors cursor-pointer ${
               section === 'home' ? 'text-[#5865F2]' : 'text-[#949BA4] hover:text-[#F2F3F5]'
             }`}
           >
-            <Home className="w-5 h-5" />
+            <FluxIcon name="home" size={20} color={section === 'home' ? '#5865F2' : '#949BA4'} />
             <span className="text-[10px] font-medium tracking-tight">Home</span>
           </button>
 
           <button
             onClick={() => handleSectionChange('search')}
-            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors ${
+            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors cursor-pointer ${
               section === 'search' ? 'text-[#5865F2]' : 'text-[#949BA4] hover:text-[#F2F3F5]'
             }`}
           >
-            <Search className="w-5 h-5" />
+            <FluxIcon name="search" size={20} color={section === 'search' ? '#5865F2' : '#949BA4'} />
             <span className="text-[10px] font-medium tracking-tight">Search</span>
           </button>
 
           <button
             onClick={() => handleSectionChange('bookmarks')}
-            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors ${
+            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors cursor-pointer ${
               section === 'bookmarks' ? 'text-[#5865F2]' : 'text-[#949BA4] hover:text-[#F2F3F5]'
             }`}
           >
-            <Bookmark className="w-5 h-5" />
+            <span className="text-lg leading-none font-bold">★</span>
             <span className="text-[10px] font-medium tracking-tight">Saved</span>
           </button>
 
           <button
             onClick={() => handleSectionChange('library')}
-            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors ${
+            className={`flex flex-col items-center justify-center w-14 py-1 space-y-1 transition-colors cursor-pointer ${
               section === 'library' ? 'text-[#5865F2]' : 'text-[#949BA4] hover:text-[#F2F3F5]'
             }`}
           >
-            <Folder className="w-5 h-5" />
+            <FluxIcon name="folder" size={20} color={section === 'library' ? '#5865F2' : '#949BA4'} />
             <span className="text-[10px] font-medium tracking-tight">Library</span>
           </button>
 
           <button
             onClick={() => setSettingsOpen(true)}
-            className="flex flex-col items-center justify-center w-14 py-1 space-y-1 text-[#949BA4] hover:text-[#F2F3F5] transition-colors"
+            className="flex flex-col items-center justify-center w-14 py-1 space-y-1 text-[#949BA4] hover:text-[#F2F3F5] transition-colors cursor-pointer"
           >
-            <Settings className="w-5 h-5" />
+            <FluxIcon name="settings" size={20} color="#949BA4" />
             <span className="text-[10px] font-medium tracking-tight">Settings</span>
           </button>
         </nav>

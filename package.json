@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "cap:sync": "cap sync android",
     "cap:build": "npm run build && cap sync android",
-    "build:apk": "npm run build && cap sync android && cd android && gradlew assembleDebug && cd .. && powershell -Command \"Copy-Item -Path 'android/app/build/outputs/apk/debug/app-debug.apk' -Destination 'FLUX-Android.apk' -Force\"",
+    "build:apk": "powershell -ExecutionPolicy Bypass -File .\\build-apk.ps1",
+    "run:emulator": "powershell -ExecutionPolicy Bypass -File .\\run-emulator.ps1",
     "cap:open": "cap open android"
   },
   "dependencies": {

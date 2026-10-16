@@ -1,27 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useFlux } from '../stores/useFluxStore';
-import { formatTime } from '../theme';
+import { formatTime, qualityLabel } from '../theme';
 import { buildProxyUrl } from '../services/searchService';
+import { FluxIcon } from './FluxIcon';
 import { MoviPlayer } from 'movi-player/react';
 import Hls from 'hls.js';
-import {
-  Play,
-  Pause,
-  RotateCcw,
-  RotateCw,
-  Volume2,
-  VolumeX,
-  Maximize,
-  Minimize,
-  ArrowLeft,
-  Check,
-  RefreshCw,
-  ExternalLink,
-  Layers,
-  Download,
-  Copy,
-  Film
-} from 'lucide-react';
 import type { VideoSource } from '../types';
 
 export const PlayerView: React.FC = () => {
@@ -70,11 +53,17 @@ export const PlayerView: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [bufferingPercent, setBufferingPercent] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [aspectRatio, setAspectRatio] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [osd, setOsd] = useState<{ text: string; level: number; visible: boolean }>({
+    text: '',
+    level: -1,
+    visible: false
+  });
 
   // Resume Toast
   const [resumeToast, setResumeToast] = useState<{ visible: boolean; timeMs: number }>({
@@ -83,6 +72,15 @@ export const PlayerView: React.FC = () => {
   });
 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const osdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showOsd = (text: string, level = -1) => {
+    setOsd({ text, level, visible: true });
+    if (osdTimeoutRef.current) clearTimeout(osdTimeoutRef.current);
+    osdTimeoutRef.current = setTimeout(() => {
+      setOsd((prev) => ({ ...prev, visible: false }));
+    }, 1400);
+  };
 
   useEffect(() => {
     setSelectedSourceIdx(0);
@@ -133,6 +131,7 @@ export const PlayerView: React.FC = () => {
 
     setHasError(false);
     setIsBuffering(true);
+    setBufferingPercent(15);
 
     let hlsInstance: Hls | null = null;
 
@@ -148,6 +147,7 @@ export const PlayerView: React.FC = () => {
         hlsInstance.on(Hls.Events.ERROR, () => {
           setIsBuffering(false);
           setHasError(true);
+          setErrorMessage('Streaming manifest failed to parse.');
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = streamUrl;
@@ -188,7 +188,10 @@ export const PlayerView: React.FC = () => {
       setIsBuffering(false);
     };
     const handlePause = () => setIsPlaying(false);
-    const handleWaiting = () => setIsBuffering(true);
+    const handleWaiting = () => {
+      setIsBuffering(true);
+      setBufferingPercent((prev) => Math.min(95, prev + 25));
+    };
     const handlePlaying = () => {
       setIsBuffering(false);
       setIsPlaying(true);
@@ -196,6 +199,7 @@ export const PlayerView: React.FC = () => {
     const handleError = () => {
       setIsBuffering(false);
       setHasError(true);
+      setErrorMessage('Direct video playback failed. Please try an alternative mirror.');
     };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
@@ -215,7 +219,7 @@ export const PlayerView: React.FC = () => {
     };
   }, [current, activeSource, isEmbed, isMkv]);
 
-  // Controls auto-hide
+  // Controls auto-hide matching hideControlsTimer
   const wakeControls = () => {
     setShowControls(true);
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
@@ -232,18 +236,21 @@ export const PlayerView: React.FC = () => {
     if (!video) return;
     if (video.paused) {
       video.play().catch(() => {});
+      showOsd('Play');
     } else {
       video.pause();
+      showOsd('Pause');
     }
   };
 
-  const skip = (seconds: number) => {
+  const seekBy = (seconds: number) => {
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
+    showOsd((seconds < 0 ? '−' : '+') + Math.abs(seconds) + 's');
   };
 
-  const changeVolume = (delta: number) => {
+  const adjustVolume = (delta: number) => {
     const video = videoRef.current;
     if (!video) return;
     const newVol = Math.max(0, Math.min(1, volume + delta));
@@ -253,13 +260,16 @@ export const PlayerView: React.FC = () => {
       setIsMuted(false);
       video.muted = false;
     }
+    showOsd(`Volume ${Math.round(newVol * 100)}%`, Math.round(newVol * 100));
   };
 
   const toggleMute = () => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = !isMuted;
-    setIsMuted(!isMuted);
+    const nextMuted = !isMuted;
+    video.muted = nextMuted;
+    setIsMuted(nextMuted);
+    showOsd(nextMuted ? 'Muted' : `Volume ${Math.round(volume * 100)}%`, nextMuted ? 0 : Math.round(volume * 100));
   };
 
   const toggleFullscreen = () => {
@@ -275,6 +285,7 @@ export const PlayerView: React.FC = () => {
     }
   };
 
+  // Keyboard Shortcuts matching Main.qml keys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       wakeControls();
@@ -286,19 +297,19 @@ export const PlayerView: React.FC = () => {
           break;
         case 'arrowleft':
           e.preventDefault();
-          skip(-10);
+          seekBy(-10);
           break;
         case 'arrowright':
           e.preventDefault();
-          skip(10);
+          seekBy(10);
           break;
         case 'arrowup':
           e.preventDefault();
-          changeVolume(0.1);
+          adjustVolume(0.05);
           break;
         case 'arrowdown':
           e.preventDefault();
-          changeVolume(-0.1);
+          adjustVolume(-0.05);
           break;
         case 'm':
           e.preventDefault();
@@ -344,22 +355,7 @@ export const PlayerView: React.FC = () => {
     setResumeToast({ visible: false, timeMs: 0 });
   };
 
-  const copyDirectLink = () => {
-    if (activeSource?.url) {
-      navigator.clipboard.writeText(activeSource.url);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    }
-  };
-
-  const playSample = () => {
-    setHasError(false);
-    const sampleUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-    if (videoRef.current) {
-      videoRef.current.src = sampleUrl;
-      videoRef.current.play().catch(() => {});
-    }
-  };
+  const videoQuality = qualityLabel(1920, 1080);
 
   return (
     <div
@@ -368,7 +364,9 @@ export const PlayerView: React.FC = () => {
       onClick={wakeControls}
       className="fixed inset-0 z-50 bg-black flex items-center justify-center overflow-hidden select-none"
     >
-      {/* Video Content: Embed Iframe OR MoviPlayer (MKV WASM) OR Native Video */}
+      {/* =========================================================================
+          Video Viewport
+         ========================================================================= */}
       {isEmbed ? (
         <iframe
           src={activeSource?.url}
@@ -387,7 +385,10 @@ export const PlayerView: React.FC = () => {
             theme="dark"
             themecolor="#5865F2"
             className="w-full h-full"
-            onError={() => setHasError(true)}
+            onError={() => {
+              setHasError(true);
+              setErrorMessage('Client-side WASM decoder encountered an issue.');
+            }}
           />
         </div>
       ) : (
@@ -405,26 +406,146 @@ export const PlayerView: React.FC = () => {
         />
       )}
 
-      {/* Buffering Spinner (Native Video) */}
-      {!isEmbed && !isMkv && isBuffering && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-          <div className="w-16 h-16 rounded-full border-4 border-[#5865F2]/20 border-t-[#5865F2] animate-spin" />
+      {/* Paused Dimmer Overlay matching PlayerView.qml line 316 */}
+      {!isEmbed && !isMkv && !isPlaying && !isBuffering && !hasError && (
+        <div className="absolute inset-0 bg-black/35 pointer-events-none transition-opacity duration-150" />
+      )}
+
+      {/* =========================================================================
+          TOP BAR: Back Button, NOW PLAYING Header, Title, Quality Chip, Mirror Switcher
+         ========================================================================= */}
+      <div
+        className={`absolute top-0 left-0 right-0 h-[130px] bg-gradient-to-b from-black/85 to-transparent px-6 sm:px-8 pt-7 z-30 transition-opacity duration-200 ${
+          showControls || isEmbed || isMkv ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-start justify-between">
+          {/* Back button & Title Block */}
+          <div className="flex items-center space-x-4 max-w-2xl">
+            {/* Back Button */}
+            <button
+              onClick={handleBack}
+              className="w-10 h-10 rounded-full bg-[#15151A]/80 hover:bg-[#383A40] border border-[#2B2D31] flex items-center justify-center text-white transition-colors cursor-pointer shadow-xl shrink-0"
+              title="Back (Esc)"
+            >
+              <FluxIcon name="back" size={20} color="#FFFFFF" />
+            </button>
+
+            {/* Title & "NOW PLAYING" */}
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-[#4752C4] tracking-[2px] uppercase">
+                NOW PLAYING
+              </span>
+              <div className="flex items-center space-x-3">
+                <h1
+                  className="text-lg sm:text-2xl font-bold text-white tracking-tight line-clamp-1 drop-shadow"
+                  title={current?.title}
+                >
+                  {current?.title}
+                </h1>
+
+                {/* Quality Chip */}
+                {videoQuality && (
+                  <div className="hidden sm:flex h-6 px-2.5 rounded-md bg-black/40 border border-white/35 items-center justify-center">
+                    <span className="text-xs font-bold text-white tracking-wider">
+                      {videoQuality}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Source / Mirror Switcher Pills matching QML */}
+          {availableSources.length > 1 && (
+            <div className="flex items-center space-x-1.5 p-1 rounded-full bg-[#1E1F22]/90 border border-[#2B2D31] shadow-2xl backdrop-blur-md">
+              {availableSources.map((src, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setSelectedSourceIdx(idx);
+                    setHasError(false);
+                    showOsd(`Switched to ${src.name}`);
+                  }}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    selectedSourceIdx === idx
+                      ? 'bg-[#5865F2] text-white shadow'
+                      : 'text-[#949BA4] hover:text-white'
+                  }`}
+                >
+                  {src.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* =========================================================================
+          CENTRE OVERLAYS: Big Play Button, Buffering Spinner, OSD Toasts
+         ========================================================================= */}
+
+      {/* Big Play Button matching PlayerView.qml lines 440-479 */}
+      {!isEmbed && !isMkv && !isPlaying && !isBuffering && !hasError && (
+        <div
+          onClick={togglePlay}
+          className="absolute inset-0 flex items-center justify-center cursor-pointer z-20"
+        >
+          <div className="w-24 h-24 rounded-full bg-white/25 hover:bg-white/40 border-2 border-white/60 text-white flex items-center justify-center shadow-2xl transform transition-transform hover:scale-105 active:scale-95">
+            <div className="ml-1">
+              <FluxIcon name="play" size={44} color="#FFFFFF" />
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Error Overlay */}
+      {/* Buffering Spinner matching PlayerView.qml lines 482-503 */}
+      {!isEmbed && !isMkv && isBuffering && !hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 space-y-3">
+          <div className="w-16 h-16 rounded-full border-4 border-white/20 border-t-[#5865F2] animate-spin" />
+          <span className="text-sm font-medium text-white/90 drop-shadow">
+            {bufferingPercent > 0 ? `Buffering ${bufferingPercent}%` : 'Buffering'}
+          </span>
+        </div>
+      )}
+
+      {/* OSD Toast Notification matching PlayerView.qml lines 506-559 */}
+      {osd.visible && (
+        <div className="absolute top-[118px] left-1/2 -translate-x-1/2 z-30 h-11 px-5 rounded-full bg-[#101015]/90 border border-white/15 shadow-2xl flex items-center space-x-3.5 animate-fadeIn">
+          <span
+            className={`text-sm font-bold ${
+              osd.level > 100 ? 'text-[#F0B232]' : 'text-white'
+            }`}
+          >
+            {osd.text}
+          </span>
+
+          {osd.level >= 0 && (
+            <div className="w-[120px] h-1 rounded-full bg-white/25 relative flex items-center">
+              <div
+                className={`h-full rounded-full ${
+                  osd.level > 100 ? 'bg-[#F0B232]' : 'bg-white'
+                }`}
+                style={{ width: `${Math.min(100, osd.level)}%` }}
+              />
+              {/* 100% Marker */}
+              <div className="absolute left-1/2 top-1/2 -translate-y-1/2 w-0.5 h-2.5 bg-white/50" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Playback Error Dialog matching PlayerView.qml lines 562-653 */}
       {!isEmbed && hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 z-20 space-y-5 p-6 text-center max-w-lg mx-auto">
-          <div className="w-14 h-14 rounded-2xl bg-[#5865F2]/10 border border-[#5865F2]/30 flex items-center justify-center text-[#5865F2]">
-            <Film className="w-7 h-7" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 z-30 space-y-4 p-6 text-center max-w-md mx-auto">
+          <div className="w-14 h-14 rounded-full bg-[#FF5D5D]/15 border border-[#FF5D5D]/30 flex items-center justify-center text-[#F23F43]">
+            <FluxIcon name="alert" size={26} color="#F23F43" />
           </div>
 
-          <div className="space-y-1.5">
-            <h3 className="text-lg font-bold text-white tracking-wide">
-              BDIX Stream Notification
-            </h3>
-            <p className="text-xs text-[#949BA4] leading-relaxed max-w-md">
-              If this BDIX stream takes a moment to buffer, you can switch to Fast Mirror, launch directly into VLC, or download the full-speed file.
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-white tracking-tight">Playback error</h3>
+            <p className="text-xs text-[#949BA4] max-w-sm">
+              {errorMessage || 'This stream could not be played directly.'}
             </p>
           </div>
 
@@ -436,228 +557,160 @@ export const PlayerView: React.FC = () => {
                   const mirrorIdx = availableSources.findIndex((s) => s.name.includes('Fast Mirror'));
                   setSelectedSourceIdx(mirrorIdx >= 0 ? mirrorIdx : 1);
                 }}
-                className="px-4 py-2.5 rounded-xl bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold transition-all shadow-lg shadow-[#5865F2]/25 flex items-center space-x-2 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold transition-all shadow-lg cursor-pointer"
               >
-                <RefreshCw className="w-4 h-4" />
-                <span>Switch to Fast Mirror</span>
+                Try Alternative Server
               </button>
             )}
 
             <button
               onClick={() => {
-                if (activeSource?.url) {
-                  window.location.href = `vlc://${activeSource.url}`;
-                }
+                if (activeSource?.url) window.location.href = `vlc://${activeSource.url}`;
               }}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors flex items-center space-x-2 cursor-pointer"
-              title="Open stream URL in VLC player"
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors cursor-pointer"
             >
-              <span>Open in VLC</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              Open in VLC
             </button>
 
             <button
-              onClick={() => {
-                if (activeSource?.url) window.open(activeSource.url, '_blank');
-              }}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors flex items-center space-x-2 cursor-pointer"
+              onClick={handleBack}
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/15 text-[#949BA4] text-xs font-medium cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download File</span>
-            </button>
-
-            <button
-              onClick={copyDirectLink}
-              className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/15 text-[#949BA4] hover:text-white text-xs font-medium transition-colors flex items-center space-x-1.5 cursor-pointer"
-            >
-              {copiedLink ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
-            </button>
-          </div>
-
-          <div className="pt-2">
-            <button
-              onClick={playSample}
-              className="text-[11px] text-[#5865F2] hover:underline cursor-pointer"
-            >
-              ▶ Test with Sample HTML5 Video Stream
+              Go back
             </button>
           </div>
         </div>
       )}
 
-      {/* Center Play/Pause Button (Native Video Only) */}
-      {!isEmbed && !isMkv && !isPlaying && !isBuffering && !hasError && (
-        <div
-          onClick={togglePlay}
-          className="absolute inset-0 flex items-center justify-center cursor-pointer z-10"
-        >
-          <div className="w-20 h-20 rounded-full bg-[#5865F2]/90 hover:bg-[#5865F2] text-white flex items-center justify-center shadow-2xl shadow-[#5865F2]/50 transform transition-transform hover:scale-110 active:scale-95">
-            <Play className="w-9 h-9 fill-white ml-1" />
-          </div>
-        </div>
-      )}
-
-      {/* Resume Toast */}
+      {/* Resume Toast Card matching ResumeToast.qml */}
       {resumeToast.visible && !isEmbed && !isMkv && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-[#2B2D31]/95 border border-[#4E5058] rounded-2xl px-5 py-3 shadow-2xl flex items-center space-x-4 animate-slideDown">
+        <div className="absolute left-8 bottom-36 z-30 bg-[#2B2D31]/95 border border-[#4E5058] rounded-xl px-4 py-3 shadow-2xl flex items-center space-x-3.5 animate-slideUp">
           <span className="text-xs text-white">
-            Resume from <strong className="text-[#5865F2]">{formatTime(resumeToast.timeMs)}</strong>?
+            Resumed from <strong className="text-[#5865F2]">{formatTime(resumeToast.timeMs)}</strong>
           </span>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={resumeAtSaved}
-              className="px-3 py-1 rounded-lg bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold cursor-pointer"
-            >
-              Resume
-            </button>
-            <button
-              onClick={() => setResumeToast({ visible: false, timeMs: 0 })}
-              className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[#949BA4] text-xs font-medium cursor-pointer"
-            >
-              Start Over
-            </button>
-          </div>
+          <button
+            onClick={resumeAtSaved}
+            className="px-2.5 py-1 rounded-lg bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold cursor-pointer"
+          >
+            Resume
+          </button>
+          <button
+            onClick={() => setResumeToast({ visible: false, timeMs: 0 })}
+            className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[#949BA4] text-xs font-medium cursor-pointer"
+          >
+            Start Over
+          </button>
         </div>
       )}
 
-      {/* Top Header Controls Overlay (Accessible in all modes) */}
-      <div
-        className={`absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/95 via-black/60 to-transparent flex items-center justify-between px-6 z-30 transition-opacity duration-300 ${
-          showControls || isEmbed || isMkv ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={handleBack}
-            className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-black/60 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-md transition-colors cursor-pointer border border-white/15 shadow-xl"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
-          </button>
-          <h2 className="text-sm font-bold text-white tracking-wide line-clamp-1 max-w-md drop-shadow">
-            {current?.title}
-          </h2>
-        </div>
-
-        {/* Source Switcher Pills */}
-        <div className="flex items-center space-x-2">
-          {availableSources.length > 1 && (
-            <div className="flex items-center space-x-1 bg-black/80 backdrop-blur-md p-1 rounded-xl border border-white/15 shadow-2xl">
-              <div className="px-2 text-[10px] font-bold text-[#80848E] uppercase tracking-wider flex items-center space-x-1">
-                <Layers className="w-3 h-3 text-[#5865F2]" />
-                <span className="hidden sm:inline">Source</span>
-              </div>
-              {availableSources.map((src, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    setSelectedSourceIdx(idx);
-                    setHasError(false);
-                  }}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    selectedSourceIdx === idx
-                      ? 'bg-[#5865F2] text-white shadow-md'
-                      : 'text-[#949BA4] hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {src.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom Controls Bar Overlay (Native Video Only) */}
+      {/* =========================================================================
+          BOTTOM TRANSPORT CONTROLS BAR matching PlaybackControls.qml
+         ========================================================================= */}
       {!isEmbed && !isMkv && (
         <div
-          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-6 pb-6 pt-12 z-30 transition-opacity duration-300 flex flex-col space-y-3 ${
+          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-6 sm:px-8 pb-6 pt-16 z-30 transition-opacity duration-200 flex flex-col space-y-2 ${
             showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
-          {/* Scrub Bar */}
-          <div
-            onClick={handleSeek}
-            className="relative w-full h-1.5 hover:h-2.5 bg-white/20 rounded-full cursor-pointer transition-all group"
-          >
-            {/* Buffered */}
+          {/* Timeline Row */}
+          <div className="flex items-center space-x-3.5 w-full">
+            {/* Elapsed Time */}
+            <span className="text-xs font-semibold font-mono text-white w-14 text-right">
+              {formatTime(currentTime)}
+            </span>
+
+            {/* Seek Bar with preview */}
             <div
-              className="absolute left-0 top-0 bottom-0 bg-white/30 rounded-full"
-              style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }}
-            />
-            {/* Played */}
-            <div
-              className="absolute left-0 top-0 bottom-0 bg-[#5865F2] rounded-full relative"
-              style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+              onClick={handleSeek}
+              className="relative grow h-1 hover:h-2 bg-white/25 rounded-full cursor-pointer transition-all group"
             >
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-lg transform scale-0 group-hover:scale-100 transition-transform" />
+              {/* Buffered */}
+              <div
+                className="absolute left-0 top-0 bottom-0 bg-white/30 rounded-full"
+                style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }}
+              />
+              {/* Played */}
+              <div
+                className="absolute left-0 top-0 bottom-0 bg-[#5865F2] rounded-full relative"
+                style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+              >
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-[#5865F2] shadow-md transform scale-0 group-hover:scale-100 transition-transform" />
+              </div>
             </div>
+
+            {/* Total Duration */}
+            <span className="text-xs font-semibold font-mono text-[#949BA4] w-14 text-left">
+              {formatTime(duration)}
+            </span>
           </div>
 
-          {/* Controls Row */}
-          <div className="flex items-center justify-between">
-            {/* Left Controls */}
-            <div className="flex items-center space-x-3">
+          {/* Button Row */}
+          <div className="flex items-center justify-between pt-1">
+            {/* Left Transport Buttons */}
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              {/* Play/Pause */}
               <button
                 onClick={togglePlay}
                 className="w-10 h-10 rounded-full hover:bg-white/10 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
               >
-                {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white ml-0.5" />}
+                <FluxIcon name={isPlaying ? 'pause' : 'play'} size={26} color="#FFFFFF" />
               </button>
 
+              {/* Replay 10s */}
               <button
-                onClick={() => skip(-10)}
+                onClick={() => seekBy(-10)}
                 className="w-9 h-9 rounded-full hover:bg-white/10 text-white flex items-center justify-center transition-colors cursor-pointer"
-                title="Rewind 10s"
+                title="Back 10 seconds (←)"
               >
-                <RotateCcw className="w-4 h-4" />
+                <FluxIcon name="replay10" size={24} color="#FFFFFF" />
               </button>
 
+              {/* Forward 10s */}
               <button
-                onClick={() => skip(10)}
+                onClick={() => seekBy(10)}
                 className="w-9 h-9 rounded-full hover:bg-white/10 text-white flex items-center justify-center transition-colors cursor-pointer"
-                title="Forward 10s"
+                title="Forward 10 seconds (→)"
               >
-                <RotateCw className="w-4 h-4" />
+                <FluxIcon name="forward10" size={24} color="#FFFFFF" />
               </button>
 
-              {/* Volume */}
-              <div className="flex items-center space-x-2 group">
+              {/* Volume Button + Expander Slider matching PlaybackControls.qml lines 265-370 */}
+              <div className="flex items-center space-x-1.5 group/vol">
                 <button
                   onClick={toggleMute}
                   className="w-9 h-9 rounded-full hover:bg-white/10 text-white flex items-center justify-center transition-colors cursor-pointer"
+                  title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
                 >
-                  {isMuted || volume === 0 ? (
-                    <VolumeX className="w-5 h-5 text-[#F23F43]" />
-                  ) : (
-                    <Volume2 className="w-5 h-5" />
-                  )}
+                  <FluxIcon
+                    name={isMuted || volume === 0 ? 'volumeMuted' : volume < 0.6 ? 'volumeLow' : 'volume'}
+                    size={24}
+                    color="#FFFFFF"
+                  />
                 </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={isMuted ? 0 : volume}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    setVolume(v);
-                    if (videoRef.current) videoRef.current.volume = v;
-                    if (isMuted && v > 0) {
-                      setIsMuted(false);
-                      if (videoRef.current) videoRef.current.muted = false;
-                    }
-                  }}
-                  className="w-20 h-1 accent-[#5865F2] cursor-pointer"
-                />
-              </div>
 
-              {/* Time Display */}
-              <div className="text-xs font-mono text-[#F2F3F5] tracking-wide ml-2">
-                <span>{formatTime(currentTime)}</span>
-                <span className="text-[#80848E] mx-1">/</span>
-                <span className="text-[#949BA4]">{formatTime(duration)}</span>
+                <div className="w-0 group-hover/vol:w-28 overflow-hidden transition-all duration-200 flex items-center space-x-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={isMuted ? 0 : volume}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      setVolume(v);
+                      if (videoRef.current) videoRef.current.volume = v;
+                      if (isMuted && v > 0) {
+                        setIsMuted(false);
+                        if (videoRef.current) videoRef.current.muted = false;
+                      }
+                    }}
+                    className="w-16 h-1 accent-[#5865F2] cursor-pointer"
+                  />
+                  <span className="text-[11px] font-mono font-semibold text-[#949BA4]">
+                    {Math.round(volume * 100)}%
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -667,10 +720,11 @@ export const PlayerView: React.FC = () => {
               <div className="relative">
                 <button
                   onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                  className="px-2.5 py-1 rounded-lg hover:bg-white/10 text-xs font-bold text-white tracking-wider cursor-pointer"
+                  className="h-8 px-2.5 rounded-lg hover:bg-white/10 text-xs font-bold text-white tracking-wider cursor-pointer"
                 >
                   {playbackSpeed}x
                 </button>
+
                 {showSpeedMenu && (
                   <div className="absolute bottom-full right-0 mb-2 w-28 rounded-xl bg-[#2B2D31] border border-[#4E5058] p-1.5 shadow-2xl z-40 space-y-1">
                     {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
@@ -680,6 +734,7 @@ export const PlayerView: React.FC = () => {
                           setPlaybackSpeed(s);
                           if (videoRef.current) videoRef.current.playbackRate = s;
                           setShowSpeedMenu(false);
+                          showOsd(`Speed ${s}x`);
                         }}
                         className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
                           playbackSpeed === s
@@ -688,7 +743,7 @@ export const PlayerView: React.FC = () => {
                         }`}
                       >
                         <span>{s}x</span>
-                        {playbackSpeed === s && <Check className="w-3 h-3" />}
+                        {playbackSpeed === s && <span className="text-white text-xs">✓</span>}
                       </button>
                     ))}
                   </div>
@@ -698,11 +753,16 @@ export const PlayerView: React.FC = () => {
               {/* Aspect Ratio Switcher */}
               <button
                 onClick={() => {
-                  setAspectRatio((prev) =>
-                    prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain'
-                  );
+                  const next =
+                    aspectRatio === 'contain'
+                      ? 'cover'
+                      : aspectRatio === 'cover'
+                      ? 'fill'
+                      : 'contain';
+                  setAspectRatio(next);
+                  showOsd(`Aspect: ${next.toUpperCase()}`);
                 }}
-                className="px-2.5 py-1 rounded-lg hover:bg-white/10 text-xs font-bold text-[#949BA4] hover:text-white tracking-wider uppercase cursor-pointer"
+                className="h-8 px-2.5 rounded-lg hover:bg-white/10 text-xs font-bold text-[#949BA4] hover:text-white tracking-wider uppercase cursor-pointer"
                 title="Toggle Aspect Ratio"
               >
                 {aspectRatio}
@@ -712,9 +772,13 @@ export const PlayerView: React.FC = () => {
               <button
                 onClick={toggleFullscreen}
                 className="w-9 h-9 rounded-full hover:bg-white/10 text-white flex items-center justify-center transition-colors cursor-pointer"
-                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                title={isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)'}
               >
-                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                <FluxIcon
+                  name={isFullscreen ? 'fullscreenExit' : 'fullscreen'}
+                  size={20}
+                  color="#FFFFFF"
+                />
               </button>
             </div>
           </div>

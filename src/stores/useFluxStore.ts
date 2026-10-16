@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   LOCAL_MEDIA: 'flux_local_media_v1',
   SELECTED_CATEGORIES_DHAKA: 'flux_sel_cat_dhaka',
   SELECTED_CATEGORIES_ICC: 'flux_sel_cat_icc',
+  TOP_PICKS_FIRST: 'flux_top_picks_first',
 };
 
 const defaultSettings: AppSettings = {
@@ -66,6 +67,7 @@ const store = {
   errorMessage: '',
   trending: [] as SearchResult[],
   isTrendingLoading: false,
+  topPicksFirst: loadStored<boolean>(STORAGE_KEYS.TOP_PICKS_FIRST, false),
   history: loadStored<HistoryItem[]>(STORAGE_KEYS.HISTORY, []),
   bookmarks: loadStored<BookmarkItem[]>(STORAGE_KEYS.BOOKMARKS, []),
   downloads: loadStored<DownloadItem[]>(STORAGE_KEYS.DOWNLOADS, []),
@@ -186,6 +188,12 @@ export const FluxStore = {
   setTrending(trending: SearchResult[]) {
     store.trending = trending;
     store.isTrendingLoading = false;
+    emitChange();
+  },
+
+  toggleTopPicksFirst() {
+    store.topPicksFirst = !store.topPicksFirst;
+    saveStored(STORAGE_KEYS.TOP_PICKS_FIRST, store.topPicksFirst);
     emitChange();
   },
 

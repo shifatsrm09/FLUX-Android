@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useFlux } from '../stores/useFluxStore';
-import { Search } from 'lucide-react';
+import { FluxIcon } from './FluxIcon';
 import { TelepartyModal } from './TelepartyModal';
 
 interface ClassicTitleBarProps {
@@ -23,100 +23,107 @@ export const ClassicTitleBar: React.FC<ClassicTitleBarProps> = ({
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 h-12 z-40 flex items-center justify-between px-6 select-none transition-colors duration-200 ${
+        className={`fixed top-0 left-0 right-0 h-12 z-40 flex items-center justify-between px-4 sm:px-8 select-none transition-all duration-240 ${
           overlayMode
-            ? 'bg-transparent pointer-events-none'
-            : 'bg-[#1E1F22]/90 backdrop-blur-md border-b border-[#2B2D31]'
+            ? 'opacity-0 pointer-events-none'
+            : 'bg-[#1E1F22]/95 backdrop-blur-md border-b border-[#2B2D31]'
         }`}
       >
         {/* Left: Brand + Nav */}
-        <div className={`flex items-center space-x-7 ${overlayMode ? 'opacity-0' : 'opacity-100'} pointer-events-auto`}>
-          {/* Logo */}
+        <div className="flex items-center space-x-6 sm:space-x-8">
+          {/* FLUX Wordmark matching QML lines 175-204 */}
           <div
             onClick={() => onSectionChange('home')}
-            className="flex items-center space-x-2.5 cursor-pointer group"
+            className="flex items-center cursor-pointer group"
+            title="Return to Home Page"
           >
-            <img src="./flux.ico" alt="FLUX" className="w-6 h-6 object-contain" />
-            <span className="text-xl font-black tracking-widest text-white group-hover:text-[#5865F2] transition-colors">
+            <span className="text-[26px] font-black tracking-[4px] text-white group-hover:text-[#5865F2] transition-colors leading-none">
               FLUX
             </span>
           </div>
 
-          {/* Nav Links */}
+          {/* Nav Links matching QML lines 207-285 */}
           <nav className="flex items-center space-x-6">
+            {/* Home */}
             <button
               onClick={() => onSectionChange('home')}
               className={`relative py-3 text-sm font-semibold transition-colors cursor-pointer ${
-                section === 'home' ? 'text-white' : 'text-[#949BA4] hover:text-[#F2F3F5]'
+                section === 'home' ? 'text-[#F2F3F5] font-bold' : 'text-[#949BA4] hover:text-[#F2F3F5]'
               }`}
             >
-              Home
+              <span>Home</span>
               {section === 'home' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#5865F2] rounded-full" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#5865F2] rounded-full" />
               )}
             </button>
 
+            {/* Search with icon */}
             <button
               onClick={() => onSectionChange('search')}
               className={`relative py-3 flex items-center space-x-1.5 text-sm font-semibold transition-colors cursor-pointer ${
-                section === 'search' ? 'text-white' : 'text-[#949BA4] hover:text-[#F2F3F5]'
+                section === 'search' ? 'text-[#F2F3F5] font-bold' : 'text-[#949BA4] hover:text-[#F2F3F5]'
               }`}
+              title="Search & Categories"
             >
-              <Search className="w-3.5 h-3.5" />
+              <FluxIcon
+                name="search"
+                size={15}
+                color={section === 'search' ? '#F2F3F5' : '#949BA4'}
+              />
               <span>Search</span>
               {section === 'search' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#5865F2] rounded-full" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#5865F2] rounded-full" />
               )}
             </button>
 
+            {/* Bookmarks */}
             <button
               onClick={() => onSectionChange('bookmarks')}
               className={`relative py-3 text-sm font-semibold transition-colors cursor-pointer ${
-                section === 'bookmarks' ? 'text-white' : 'text-[#949BA4] hover:text-[#F2F3F5]'
+                section === 'bookmarks' ? 'text-[#F2F3F5] font-bold' : 'text-[#949BA4] hover:text-[#F2F3F5]'
               }`}
             >
-              Bookmarks
+              <span>Bookmarks</span>
               {section === 'bookmarks' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#5865F2] rounded-full" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#5865F2] rounded-full" />
               )}
             </button>
 
+            {/* Library */}
             <button
               onClick={() => {
-                if (!inTeleparty) {
-                  onSectionChange('library');
-                }
+                if (!inTeleparty) onSectionChange('library');
               }}
-              title={inTeleparty ? 'Leave Teleparty to access library' : 'Offline Library'}
               disabled={inTeleparty}
+              title={inTeleparty ? 'Leave Teleparty to access library' : 'Offline Library'}
               className={`relative py-3 text-sm font-semibold transition-colors cursor-pointer ${
                 inTeleparty
                   ? 'opacity-40 cursor-not-allowed text-[#80848E]'
                   : section === 'library'
-                  ? 'text-white'
+                  ? 'text-[#F2F3F5] font-bold'
                   : 'text-[#949BA4] hover:text-[#F2F3F5]'
               }`}
             >
-              Library
+              <span>Library</span>
               {section === 'library' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#5865F2] rounded-full" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#5865F2] rounded-full" />
               )}
             </button>
           </nav>
         </div>
 
-        {/* Right: Now Playing + Teleparty */}
-        <div className="flex items-center space-x-3 pointer-events-auto">
-          {/* Now Playing pill */}
+        {/* Right: Now Playing & Teleparty matching QML lines 289-400 */}
+        <div className="flex items-center space-x-2.5">
+          {/* Now Playing Pill */}
           {isPlaying && state.currentPage !== 'player' && (
             <button
               onClick={() => setPage('player')}
-              className="flex items-center space-x-2 px-3 py-1 rounded-full bg-[#5865F2]/20 hover:bg-[#5865F2]/30 border border-[#5865F2]/50 text-white text-xs font-semibold transition-all cursor-pointer"
+              className="flex items-center space-x-1.5 h-6 px-3 rounded-full bg-[#5865F2]/20 hover:bg-[#5865F2]/30 border border-[#5865F2]/50 text-white text-[11px] font-semibold transition-all cursor-pointer shadow-md"
             >
-              <div className="flex items-end space-x-0.5 h-3.5 w-3.5">
-                <span className="w-1 bg-[#5865F2] rounded-full animate-eq-1" />
-                <span className="w-1 bg-[#5865F2] rounded-full animate-eq-2" />
-                <span className="w-1 bg-[#5865F2] rounded-full animate-eq-3" />
+              <div className="flex items-end space-x-0.5 h-3 w-3">
+                <span className="w-0.5 bg-[#5865F2] rounded-full animate-eq-1" />
+                <span className="w-0.5 bg-[#5865F2] rounded-full animate-eq-2" />
+                <span className="w-0.5 bg-[#5865F2] rounded-full animate-eq-3" />
               </div>
               <span>Now Playing</span>
             </button>
@@ -125,7 +132,7 @@ export const ClassicTitleBar: React.FC<ClassicTitleBarProps> = ({
           {/* Teleparty Button */}
           <button
             onClick={() => setTelepartyOpen(!telepartyOpen)}
-            className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 h-6 px-3 rounded-full text-[11px] font-semibold border transition-all cursor-pointer ${
               state.teleparty.state === 'joined'
                 ? 'bg-[#23A55A]/20 border-[#23A55A]/50 text-white hover:bg-[#23A55A]/30'
                 : state.teleparty.state === 'connecting'
@@ -135,7 +142,7 @@ export const ClassicTitleBar: React.FC<ClassicTitleBarProps> = ({
           >
             {state.teleparty.state !== 'idle' && (
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-1.5 h-1.5 rounded-full ${
                   state.teleparty.state === 'joined' ? 'bg-[#23A55A]' : 'bg-[#F0B232]'
                 }`}
               />

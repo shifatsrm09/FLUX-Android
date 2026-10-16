@@ -2,16 +2,19 @@ import React, { useState } from 'react';
 import type { SearchResult } from '../types';
 import { describe, formatMedia } from '../utils/mediaFormatter';
 import { PosterArt } from './PosterArt';
+import { Theme, posterTop, posterBottom } from '../theme';
 import { useFlux } from '../stores/useFluxStore';
-import { Play, Folder, Bookmark, Download, X } from 'lucide-react';
 
 interface SearchResultCardProps {
   item: SearchResult;
   progress?: number; // 0..1
   extraInfo?: string;
   showRemove?: boolean;
+  libraryName?: string;
+  isPlaying?: boolean;
   onRemove?: () => void;
   onSelectFolder?: (item: SearchResult) => void;
+  onDownload?: () => void;
 }
 
 export const SearchResultCard: React.FC<SearchResultCardProps> = ({
@@ -19,24 +22,53 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
   progress = 0,
   extraInfo = '',
   showRemove = false,
+  libraryName = '',
+  isPlaying = false,
   onRemove,
   onSelectFolder,
+  onDownload,
 }) => {
   const { playMedia, toggleBookmark, isBookmarked, addDownload } = useFlux();
   const [hovered, setHovered] = useState(false);
-  const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [dlFlash, setDlFlash] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   const formatted = formatMedia(item.title, item.isFolder, item.formattedSize);
   const meta = describe(item.title, item.isFolder, item.formattedSize);
   const bookmarked = isBookmarked(item.playUrl);
 
+  const topColor = posterTop(item.title);
+  const bottomColor = posterBottom(item.title);
+
+  // Big outlined text for procedural art
   const bigText = item.isFolder
     ? ''
     : meta.episode
-    ? meta.episode
+    ? meta.episode.match(/E(\d+)/)
+      ? `E${meta.episode.match(/E(\d+)/)![1]}`
+      : meta.episode
     : meta.year
     ? meta.year
-    : formatted.title.charAt(0).toUpperCase();
+    : formatted.title.length > 0
+    ? formatted.title.charAt(0).toUpperCase()
+    : '';
+
+  // Info line matches QML SearchResultCard.qml
+  const infoLine = (() => {
+    if (item.isFolder) {
+      return item.formattedSize && item.formattedSize !== 'Folder' ? item.formattedSize : 'Folder';
+    }
+    const parts: string[] = [];
+    if (extraInfo) parts.push(extraInfo);
+    if (meta.episode) parts.push(meta.episode);
+    else if (meta.year) parts.push(meta.year);
+    if (meta.source) parts.push(meta.source);
+    if (meta.codec) parts.push(meta.codec);
+    if (item.formattedSize && item.formattedSize !== 'Folder') parts.push(item.formattedSize);
+    return parts.join('  ·  ');
+  })();
+
+  const effectiveLibraryName = libraryName || item.libraryName || '';
 
   const handleCardClick = () => {
     if (item.isFolder) {
@@ -62,9 +94,13 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    addDownload(item.playUrl, formatted.title, item.isFolder);
-    setDownloadSuccess(true);
-    setTimeout(() => setDownloadSuccess(false), 2000);
+    if (onDownload) {
+      onDownload();
+    } else {
+      addDownload(item.playUrl, item.title, item.isFolder);
+    }
+    setDlFlash(true);
+    setTimeout(() => setDlFlash(false), 1600);
   };
 
   const handleRemoveClick = (e: React.MouseEvent) => {
@@ -77,138 +113,229 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={handleCardClick}
-      className={`relative group rounded-xl cursor-pointer transition-all duration-300 ease-out select-none flex flex-col ${
-        hovered ? 'z-20 scale-[1.04]' : 'z-0 scale-100'
+      className={`relative w-full aspect-[1/1.5] cursor-pointer select-none transition-transform duration-260 ease-out p-[7px] ${
+        hovered ? 'z-20' : 'z-0'
       }`}
     >
-      {/* Poster Container */}
+      {/* Visual Card Container */}
       <div
-        className={`relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-[#15151A] border transition-colors duration-200 ${
-          hovered ? 'border-[#5865F2] shadow-2xl shadow-[#5865F2]/20' : 'border-[#2B2D31]'
+        className={`relative w-full h-full rounded-[12px] overflow-hidden transition-all duration-260 ease-out border ${
+          hovered ? 'scale-[1.045] shadow-2xl' : 'scale-100'
+        } ${
+          isPlaying
+            ? 'border-[#5865F2] ring-1 ring-[#5865F2]'
+            : hovered
+            ? 'border-white/40 shadow-black/80'
+            : 'border-white/10'
         }`}
+        style={{
+          background: item.isFolder
+            ? `linear-gradient(180deg, ${Theme.surfaceHi} 0%, ${Theme.surface} 100%)`
+            : `linear-gradient(180deg, ${topColor} 0%, ${bottomColor} 100%)`
+        }}
       >
-        {/* Procedural Poster Art or Image */}
-        {item.posterUrl && !item.isFolder ? (
+        {/* Procedural Poster Artwork */}
+        <PosterArt
+          seed={item.title}
+          bigText={bigText}
+          isFolder={item.isFolder}
+          hovered={hovered}
+          className={imgLoaded && item.posterUrl ? 'opacity-0' : 'opacity-100'}
+        />
+
+        {/* Real Poster Image (TMDB / ICC Poster) */}
+        {item.posterUrl && !item.isFolder && (
           <img
             src={item.posterUrl}
             alt={formatted.title}
-            className={`w-full h-full object-cover transition-transform duration-500 ${
-              hovered ? 'scale-105' : 'scale-100'
+            onLoad={() => setImgLoaded(true)}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+              imgLoaded ? 'opacity-100' : 'opacity-0'
             }`}
             loading="lazy"
           />
-        ) : (
-          <PosterArt
-            seed={item.title}
-            bigText={bigText}
-            isFolder={item.isFolder}
-            hovered={hovered}
-          />
         )}
 
-        {/* Top Badges */}
-        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-10">
-          <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-            {meta.resolution && (
-              <span className="px-1.5 py-0.5 rounded bg-black/75 border border-white/20 text-[10px] font-bold tracking-wider text-white">
+        {/* Soft Top Gloss Scrim */}
+        <div
+          className="absolute top-0 left-0 right-0 h-1/2 pointer-events-none"
+          style={{
+            background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%)'
+          }}
+        />
+
+        {/* Bottom Scrim for Title Legibility */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-[80%] pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.6) 55%, rgba(0, 0, 0, 0.92) 100%)'
+          }}
+        />
+
+        {/* Top-Left Badges: Bookmark star, Resolution, HDR, Watched */}
+        <div className="absolute top-2.5 left-2.5 flex items-center space-x-1.5 z-10 pointer-events-none">
+          {bookmarked && (
+            <div className="w-[22px] h-[22px] rounded-full bg-[#5865F2] flex items-center justify-center shadow-md">
+              <span className="text-white text-xs leading-none">★</span>
+            </div>
+          )}
+
+          {!item.isFolder && meta.resolution && (
+            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+              <span
+                className={`text-[10px] font-bold tracking-wider ${
+                  meta.resolution === '4K' ? 'text-[#F0B232]' : 'text-white'
+                }`}
+              >
                 {meta.resolution}
               </span>
-            )}
-            {meta.dualAudio && (
-              <span className="px-1.5 py-0.5 rounded bg-[#5865F2]/30 border border-[#5865F2]/60 text-[10px] font-bold text-white">
-                DUAL
-              </span>
-            )}
-            {item.isFolder && (
-              <span className="px-1.5 py-0.5 rounded bg-[#2B2D31]/80 border border-white/20 text-[10px] font-bold text-white flex items-center space-x-1">
-                <Folder className="w-2.5 h-2.5" />
-                <span>SERIES</span>
-              </span>
-            )}
-          </div>
+            </div>
+          )}
+
+          {!item.isFolder && meta.hdr && (
+            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+              <span className="text-[10px] font-bold tracking-wider text-[#F0B232]">{meta.hdr}</span>
+            </div>
+          )}
+
+          {!item.isFolder && progress >= 0.9 && (
+            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-[#23A55A]">✓ WATCHED</span>
+            </div>
+          )}
         </div>
 
-        {/* Top Right Action Buttons (Bookmark & Remove) */}
-        <div className="absolute top-2.5 right-2.5 flex items-center space-x-1 z-20">
-          {showRemove && (
+        {/* Top-Right Badges: Extension, Folder, or Playing equalizer */}
+        <div className="absolute top-2.5 right-2.5 flex items-center space-x-1.5 z-10 pointer-events-none">
+          {isPlaying ? (
+            <div className="h-[22px] px-2 rounded-full bg-[#5865F2] flex items-center space-x-1.5 shadow-md">
+              <div className="flex items-end space-x-0.5 h-3 w-3">
+                <span className="w-0.5 bg-white rounded-full animate-eq-1" />
+                <span className="w-0.5 bg-white rounded-full animate-eq-2" />
+                <span className="w-0.5 bg-white rounded-full animate-eq-3" />
+              </div>
+              <span className="text-[9px] font-bold tracking-wider text-white">PLAYING</span>
+            </div>
+          ) : item.isFolder ? (
+            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-white/80">FOLDER</span>
+            </div>
+          ) : item.extension ? (
+            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-white/80">{item.extension.toUpperCase()}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Hover Dim Overlay */}
+        <div
+          className={`absolute inset-0 bg-black transition-opacity duration-200 pointer-events-none ${
+            hovered ? 'opacity-30' : 'opacity-0'
+          }`}
+        />
+
+        {/* Center Hover Action (Play button / Open pill) */}
+        <div
+          className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-200 ${
+            hovered ? 'opacity-100 scale-100' : 'opacity-0 scale-75'
+          }`}
+        >
+          {item.isFolder ? (
+            <div className="h-[34px] px-4 rounded-full bg-white/95 text-[#1E1F22] flex items-center space-x-1.5 shadow-xl font-bold text-xs tracking-wide">
+              <span>Open</span>
+              <span className="text-base font-bold leading-none">›</span>
+            </div>
+          ) : (
+            <div className="w-[54px] h-[54px] rounded-full bg-white/95 text-[#1E1F22] flex items-center justify-center shadow-2xl">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="#1E1F22" className="ml-0.5">
+                <path d="M7 4.5 L19.5 12 L7 19.5 Z" />
+              </svg>
+            </div>
+          )}
+        </div>
+
+        {/* Hover Top-Right Actions (Remove & Bookmark & Download) */}
+        <div className="absolute top-2.5 right-2.5 flex items-center space-x-1.5 z-20">
+          {showRemove && hovered && (
             <button
               onClick={handleRemoveClick}
-              className="w-7 h-7 rounded-full bg-black/70 hover:bg-[#F23F43] border border-white/20 text-white flex items-center justify-center transition-colors"
+              className="w-[26px] h-[26px] rounded-full bg-black/70 hover:bg-[#F23F43] border border-white/25 text-white flex items-center justify-center text-sm font-bold transition-colors cursor-pointer shadow-lg"
               title="Remove from Continue Watching"
             >
-              <X className="w-3.5 h-3.5" />
+              ×
             </button>
           )}
 
-          <button
-            onClick={handleBookmarkClick}
-            className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${
-              bookmarked
-                ? 'bg-[#5865F2] border-[#5865F2] text-white shadow-lg'
-                : hovered
-                ? 'bg-black/70 hover:bg-black/90 border-white/20 text-white'
-                : 'opacity-0'
-            }`}
-            title={bookmarked ? 'Remove Bookmark' : 'Add to Bookmarks'}
-          >
-            <Bookmark className={`w-3.5 h-3.5 ${bookmarked ? 'fill-white' : ''}`} />
-          </button>
+          {hovered && (
+            <button
+              onClick={handleBookmarkClick}
+              className={`w-[26px] h-[26px] rounded-full border flex items-center justify-center transition-all cursor-pointer shadow-lg ${
+                bookmarked
+                  ? 'bg-[#5865F2] border-[#5865F2] text-white'
+                  : 'bg-black/70 hover:bg-black/90 border-white/25 text-white'
+              }`}
+              title={bookmarked ? 'Remove bookmark' : 'Bookmark this item'}
+            >
+              <span className="text-xs leading-none">★</span>
+            </button>
+          )}
+
+          {hovered && !item.localPath && (
+            <button
+              onClick={handleDownloadClick}
+              className={`w-[26px] h-[26px] rounded-full border flex items-center justify-center text-xs font-bold transition-all cursor-pointer shadow-lg ${
+                dlFlash
+                  ? 'bg-[#23A55A] border-[#23A55A] text-white'
+                  : 'bg-black/70 hover:bg-white hover:text-[#1E1F22] border-white/25 text-white'
+              }`}
+              title={dlFlash ? 'Added to downloads' : item.isFolder ? 'Download whole folder' : 'Download'}
+            >
+              {dlFlash ? '✓' : '↓'}
+            </button>
+          )}
         </div>
 
-        {/* Center Hover Action Button (Play / Open) */}
-        <div
-          className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 z-10 ${
-            hovered ? 'opacity-100 bg-black/40' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          <div className="w-13 h-13 rounded-full bg-[#5865F2] text-white flex items-center justify-center shadow-xl shadow-[#5865F2]/50 transform transition-transform hover:scale-110 active:scale-95">
-            {item.isFolder ? (
-              <Folder className="w-6 h-6" />
-            ) : (
-              <Play className="w-6 h-6 fill-white ml-0.5" />
-            )}
-          </div>
+        {/* Title Block inside the Card */}
+        <div className="absolute left-3.5 right-3.5 bottom-3 flex flex-col space-y-0.5 z-10 pointer-events-none">
+          {effectiveLibraryName && (
+            <span
+              className={`text-[9px] font-bold uppercase tracking-[1.1px] line-clamp-1 ${
+                isPlaying ? 'text-[#4752C4]' : 'text-white/70'
+              }`}
+            >
+              {effectiveLibraryName}
+            </span>
+          )}
+
+          <h3
+            className="text-[14px] md:text-[15px] font-semibold text-white leading-tight line-clamp-2 drop-shadow"
+            title={formatted.title}
+          >
+            {formatted.title}
+          </h3>
+
+          {infoLine && (
+            <p className="text-[11px] text-white/70 font-normal line-clamp-1 drop-shadow pt-0.5">
+              {infoLine}
+            </p>
+          )}
         </div>
 
-        {/* Bottom Right Download Button */}
-        {hovered && !item.localPath && (
-          <button
-            onClick={handleDownloadClick}
-            className={`absolute bottom-2.5 right-2.5 z-20 w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
-              downloadSuccess
-                ? 'bg-[#23A55A] border-[#23A55A] text-white'
-                : 'bg-black/75 hover:bg-black border-white/20 text-white'
-            }`}
-            title={item.isFolder ? 'Download Season Pack' : 'Download Video'}
-          >
-            <Download className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Progress Bar (Watched Fraction) */}
+        {/* Watch Progress Bar at Bottom of Card */}
         {progress > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/60 z-10">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/30 z-20">
             <div
               className="h-full bg-[#5865F2]"
               style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
             />
           </div>
         )}
-      </div>
 
-      {/* Card Info */}
-      <div className="mt-2.5 px-1 flex flex-col">
-        <h3
-          className={`text-sm font-semibold leading-tight line-clamp-1 transition-colors ${
-            hovered ? 'text-[#5865F2]' : 'text-[#F2F3F5]'
-          }`}
-          title={formatted.title}
-        >
-          {formatted.title}
-        </h3>
-        <p className="text-[11px] font-medium text-[#949BA4] mt-0.5 line-clamp-1">
-          {extraInfo || formatted.subtitle || (item.isFolder ? 'Directory' : item.formattedSize)}
-        </p>
+        {/* Now-playing accent bar */}
+        {isPlaying && progress <= 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#5865F2] z-20" />
+        )}
       </div>
     </div>
   );
