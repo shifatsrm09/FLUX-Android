@@ -636,3 +636,52 @@ export async function fetchFolderItems(
     };
   });
 }
+
+/**
+ * Real connectivity testing for both Dhaka Flix (Server 1) and ICC FTP (Server 2)
+ */
+export async function testServerConnection(
+  server: 1 | 2,
+  customUrl?: string,
+  proxyMode: 'auto' | 'direct' | 'corsproxy' | 'custom' = 'auto',
+  customProxyUrl?: string
+): Promise<{ success: boolean; latencyMs: number; message: string }> {
+  const startTime = Date.now();
+  let rawUrl = '';
+
+  if (server === 1) {
+    rawUrl = 'http://172.16.50.4/';
+  } else {
+    rawUrl = customUrl && customUrl.trim().length > 0 ? customUrl.trim() : 'http://10.16.100.244/';
+  }
+
+  const serverName = server === 2 ? 'ICC FTP' : 'Dhaka Flix';
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+
+    const targetUrl = buildProxyUrl(rawUrl, proxyMode, customProxyUrl);
+
+    await fetch(targetUrl, {
+      method: 'GET',
+      mode: 'no-cors',
+      signal: timer ? controller.signal : undefined
+    });
+
+    clearTimeout(timer);
+    const latency = Date.now() - startTime;
+    return {
+      success: true,
+      latencyMs: latency,
+      message: `Connected successfully! (${serverName} · ${latency}ms)`
+    };
+  } catch (err: any) {
+    const latency = Date.now() - startTime;
+    return {
+      success: false,
+      latencyMs: latency,
+      message: `Connection failed: ${serverName} timed out or unreachable on current network`
+    };
+  }
+}

@@ -113,7 +113,7 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={handleCardClick}
-      className={`relative w-full aspect-[1/1.5] cursor-pointer select-none transition-transform duration-260 ease-out p-[7px] ${
+      className={`relative w-full aspect-[1/1.5] cursor-pointer select-none transition-transform duration-260 ease-out p-[3px] sm:p-[6px] ${
         hovered ? 'z-20' : 'z-0'
       }`}
     >
@@ -174,17 +174,17 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
         />
 
         {/* Top-Left Badges: Bookmark star, Resolution, HDR, Watched */}
-        <div className="absolute top-2.5 left-2.5 flex items-center space-x-1.5 z-10 pointer-events-none">
+        <div className="absolute top-1.5 left-1.5 sm:top-2.5 sm:left-2.5 flex items-center space-x-1 sm:space-x-1.5 z-10 pointer-events-none">
           {bookmarked && (
-            <div className="w-[22px] h-[22px] rounded-full bg-[#5865F2] flex items-center justify-center shadow-md">
-              <span className="text-white text-xs leading-none">★</span>
+            <div className="w-[18px] h-[18px] sm:w-[22px] sm:h-[22px] rounded-full bg-[#5865F2] flex items-center justify-center shadow-md">
+              <span className="text-white text-[10px] sm:text-xs leading-none">★</span>
             </div>
           )}
 
           {!item.isFolder && meta.resolution && (
-            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+            <div className="h-4 sm:h-5 px-1 sm:px-1.5 rounded-[4px] sm:rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
               <span
-                className={`text-[10px] font-bold tracking-wider ${
+                className={`text-[8px] sm:text-[10px] font-bold tracking-wider ${
                   meta.resolution === '4K' ? 'text-[#F0B232]' : 'text-white'
                 }`}
               >
@@ -194,20 +194,20 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
           )}
 
           {!item.isFolder && meta.hdr && (
-            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
-              <span className="text-[10px] font-bold tracking-wider text-[#F0B232]">{meta.hdr}</span>
+            <div className="h-4 sm:h-5 px-1 sm:px-1.5 rounded-[4px] sm:rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+              <span className="text-[8px] sm:text-[10px] font-bold tracking-wider text-[#F0B232]">{meta.hdr}</span>
             </div>
           )}
 
           {!item.isFolder && progress >= 0.9 && (
-            <div className="h-5 px-1.5 rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
-              <span className="text-[10px] font-bold text-[#23A55A]">✓ WATCHED</span>
+            <div className="h-4 sm:h-5 px-1 sm:px-1.5 rounded-[4px] sm:rounded-[5px] bg-black/60 border border-white/20 flex items-center justify-center">
+              <span className="text-[8px] sm:text-[10px] font-bold text-[#23A55A]">✓ WATCHED</span>
             </div>
           )}
         </div>
 
         {/* Top-Right Badges: Extension, Folder, or Playing equalizer */}
-        <div className="absolute top-2.5 right-2.5 flex items-center space-x-1.5 z-10 pointer-events-none">
+        <div className="absolute top-1.5 right-1.5 sm:top-2.5 sm:right-2.5 flex items-center space-x-1 sm:space-x-1.5 z-10 pointer-events-none">
           {isPlaying ? (
             <div className="h-[22px] px-2 rounded-full bg-[#5865F2] flex items-center space-x-1.5 shadow-md">
               <div className="flex items-end space-x-0.5 h-3 w-3">
@@ -297,10 +297,10 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
         </div>
 
         {/* Title Block inside the Card */}
-        <div className="absolute left-3.5 right-3.5 bottom-3 flex flex-col space-y-0.5 z-10 pointer-events-none">
+        <div className="absolute left-2 right-2 bottom-2 sm:left-3 sm:right-3 sm:bottom-2.5 flex flex-col space-y-0.5 z-10 pointer-events-none">
           {effectiveLibraryName && (
             <span
-              className={`text-[9px] font-bold uppercase tracking-[1.1px] line-clamp-1 ${
+              className={`text-[8px] sm:text-[9px] font-bold uppercase tracking-[0.8px] sm:tracking-[1.1px] line-clamp-1 ${
                 isPlaying ? 'text-[#4752C4]' : 'text-white/70'
               }`}
             >
@@ -309,14 +309,14 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
           )}
 
           <h3
-            className="text-[14px] md:text-[15px] font-semibold text-white leading-tight line-clamp-2 drop-shadow"
+            className="text-[11px] sm:text-[13px] md:text-[14px] font-semibold text-white leading-tight line-clamp-2 drop-shadow"
             title={formatted.title}
           >
             {formatted.title}
           </h3>
 
           {infoLine && (
-            <p className="text-[11px] text-white/70 font-normal line-clamp-1 drop-shadow pt-0.5">
+            <p className="text-[9px] sm:text-[10px] text-white/70 font-normal line-clamp-1 drop-shadow pt-0.5">
               {infoLine}
             </p>
           )}
