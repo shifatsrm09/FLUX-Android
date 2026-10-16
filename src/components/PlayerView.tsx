@@ -6,6 +6,7 @@ import { FluxIcon } from './FluxIcon';
 import { MoviPlayer } from 'movi-player/react';
 import Hls from 'hls.js';
 import type { VideoSource } from '../types';
+import { isNativeVlcSupported, launchNativeVlc } from '../services/fluxVlcPlayer';
 
 export const PlayerView: React.FC = () => {
   const { state, setPage, updateProgress } = useFlux();
@@ -99,6 +100,48 @@ export const PlayerView: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [current?.url]);
+
+  // Native Android Embedded LibVLC Player
+  useEffect(() => {
+    if (!current || !isNativeVlcSupported()) return;
+
+    let isCancelled = false;
+    const historyItem = state.history.find((h) => h.url === current.url);
+    const resumePos = historyItem && historyItem.progressFraction < 0.95 ? historyItem.timestampMs : 0;
+
+    const sources = availableSources.map((s) => ({
+      name: s.name,
+      url: s.url
+    }));
+
+    const playUrl = activeSource?.url || current.directUrl || current.url;
+
+    launchNativeVlc(
+      playUrl,
+      current.title,
+      current.title.match(/\b(2160p|4k|1080p|720p|480p)\b/i)?.[0]?.toUpperCase() || 'HD',
+      resumePos,
+      sources
+    )
+      .then((res) => {
+        if (isCancelled) return;
+        if (res.durationMs > 0) {
+          updateProgress(current.url, res.positionMs, res.durationMs);
+        }
+        setPage(state.pageBeforePlayer || 'search');
+      })
+      .catch((err) => {
+        console.error('Native VLC Player error:', err);
+        if (!isCancelled) {
+          setHasError(true);
+          setErrorMessage('Native VLC playback failed: ' + err.message);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [current?.url, activeSource?.url]);
 
   const isEmbed =
     activeSource?.type === 'embed' ||
@@ -357,6 +400,31 @@ export const PlayerView: React.FC = () => {
 
   const videoQuality = qualityLabel(1920, 1080);
 
+  if (isNativeVlcSupported()) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#0B0B0E] flex flex-col items-center justify-center text-white p-6 select-none">
+        <div className="w-16 h-16 rounded-2xl bg-[#1E1F22] border border-[#2B2D31] flex items-center justify-center mb-6 shadow-2xl">
+          <div className="w-8 h-8 border-3 border-[#5865F2] border-t-transparent rounded-full animate-spin" />
+        </div>
+        <span className="text-[11px] uppercase font-bold text-[#5865F2] tracking-[2px] mb-2">
+          FLUX Embedded VLC Engine
+        </span>
+        <h2 className="text-xl font-bold text-white max-w-md text-center px-4 line-clamp-1 mb-2">
+          {current?.title || 'Starting Playback...'}
+        </h2>
+        <p className="text-xs text-[#949BA4] text-center max-w-sm mb-6">
+          Playing stream directly with native LibVLC hardware decoding
+        </p>
+        <button
+          onClick={handleBack}
+          className="px-5 py-2.5 rounded-full bg-[#1E1F22] hover:bg-[#2B2D31] border border-[#2B2D31] text-xs font-semibold text-[#DBDEE1] transition-all cursor-pointer shadow-lg"
+        >
+          Cancel & Return
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
@@ -565,11 +633,16 @@ export const PlayerView: React.FC = () => {
 
             <button
               onClick={() => {
-                if (activeSource?.url) window.location.href = `vlc://${activeSource.url}`;
+                setHasError(false);
+                setIsBuffering(true);
+                if (videoRef.current) {
+                  videoRef.current.load();
+                  videoRef.current.play().catch(() => {});
+                }
               }}
               className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors cursor-pointer"
             >
-              Open in VLC
+              Retry Playback
             </button>
 
             <button
