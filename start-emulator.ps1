@@ -1,5 +1,14 @@
 # Script to launch Android Emulator standalone without FLUX
+param (
+    [string]$AvdName = "Pixel_8"
+)
+
 $ErrorActionPreference = "Stop"
+
+# Ensure AVD Home is pointed to M:\Android\avd where Pixel_8 resides
+if (Test-Path "M:\Android\avd") {
+    $env:ANDROID_AVD_HOME = "M:\Android\avd"
+}
 
 $SdkDir = "C:\Users\shifa\AppData\Local\Android\Sdk"
 $EmulatorExe = "$SdkDir\emulator\emulator.exe"
@@ -9,9 +18,9 @@ Write-Host "Checking for running Android devices/emulators..." -ForegroundColor 
 $devices = & $AdbExe devices | Where-Object { $_ -match "\bdevice\b" }
 
 if (-not $devices) {
-    Write-Host "Starting 'Medium_Phone' AVD..." -ForegroundColor Green
+    Write-Host "Starting '$AvdName' AVD with boosted hardware specs..." -ForegroundColor Green
     $emuArgs = @(
-        "-avd", "Medium_Phone",
+        "-avd", $AvdName,
         "-no-boot-anim"
     )
     Start-Process -FilePath $EmulatorExe -ArgumentList $emuArgs
@@ -37,7 +46,7 @@ if (-not $devices) {
     & $AdbExe shell setprop debug.egl.hw 1 2>$null
     & $AdbExe shell setprop debug.composition.type gpu 2>$null
 
-    Write-Host "Android Emulator is ready to use!" -ForegroundColor Green
+    Write-Host "Android Emulator ($AvdName) is ready to use!" -ForegroundColor Green
 } else {
     Write-Host "Android emulator is already running." -ForegroundColor Green
 }

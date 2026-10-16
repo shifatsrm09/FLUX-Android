@@ -1,5 +1,14 @@
 # Script to launch Android Emulator and run FLUX on PC
+param (
+    [string]$AvdName = "Pixel_8"
+)
+
 $ErrorActionPreference = "Stop"
+
+# Ensure AVD Home is pointed to M:\Android\avd where Pixel_8 resides
+if (Test-Path "M:\Android\avd") {
+    $env:ANDROID_AVD_HOME = "M:\Android\avd"
+}
 
 $SdkDir = "C:\Users\shifa\AppData\Local\Android\Sdk"
 $EmulatorExe = "$SdkDir\emulator\emulator.exe"
@@ -16,9 +25,9 @@ Write-Host "Checking for running Android devices/emulators..." -ForegroundColor 
 $devices = & $AdbExe devices | Where-Object { $_ -match "\bdevice\b" }
 
 if (-not $devices) {
-    Write-Host "No active emulator found. Starting 'Medium_Phone' AVD with boosted hardware specs..." -ForegroundColor Green
+    Write-Host "No active emulator found. Starting '$AvdName' AVD with boosted hardware specs..." -ForegroundColor Green
     $emuArgs = @(
-        "-avd", "Medium_Phone",
+        "-avd", $AvdName,
         "-no-boot-anim"
     )
     Start-Process -FilePath $EmulatorExe -ArgumentList $emuArgs
@@ -56,4 +65,4 @@ Write-Host "Installing FLUX APK ($ApkPath)..." -ForegroundColor Cyan
 Write-Host "Launching FLUX..." -ForegroundColor Green
 & $AdbExe shell am start -n com.shifat.flux/.MainActivity
 
-Write-Host "FLUX is now running on your PC emulator!" -ForegroundColor Green
+Write-Host "FLUX is now running on your $AvdName emulator!" -ForegroundColor Green
