@@ -58,6 +58,10 @@ export const PlayerView: React.FC = () => {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [aspectRatio, setAspectRatio] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [tracksPopupOpen, setTracksPopupOpen] = useState(false);
+  const [selectedAudioTrack, setSelectedAudioTrack] = useState('English');
+  const [selectedSubtitleTrack, setSelectedSubtitleTrack] = useState('English');
+  const [autoplayNext, setAutoplayNext] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [osd, setOsd] = useState<{ text: string; level: number; visible: boolean }>({
@@ -479,6 +483,19 @@ export const PlayerView: React.FC = () => {
         <div className="absolute inset-0 bg-black/35 pointer-events-none transition-opacity duration-150" />
       )}
 
+      {/* Big Center Play Button matching PlayerView.qml line 440 & user screenshot */}
+      {!isEmbed && !isMkv && !isPlaying && !isBuffering && !hasError && (
+        <button
+          onClick={togglePlay}
+          className="absolute z-20 w-24 h-24 rounded-full bg-white/25 hover:bg-white/40 border-2 border-white/60 flex items-center justify-center transition-all cursor-pointer shadow-2xl backdrop-blur-sm active:scale-95 group"
+          title="Play (Space)"
+        >
+          <div className="translate-x-1">
+            <FluxIcon name="play" size={44} color="#FFFFFF" />
+          </div>
+        </button>
+      )}
+
       {/* =========================================================================
           TOP BAR: Back Button, NOW PLAYING Header, Title, Quality Chip, Mirror Switcher
          ========================================================================= */}
@@ -748,6 +765,15 @@ export const PlayerView: React.FC = () => {
                 <FluxIcon name="forward10" size={24} color="#FFFFFF" />
               </button>
 
+              {/* Next Episode Button matching PlaybackControls.qml line 273 */}
+              <button
+                onClick={() => showOsd('Next episode')}
+                className="w-9 h-9 rounded-full hover:bg-white/10 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Next Episode (N)"
+              >
+                <FluxIcon name="next" size={24} color="#FFFFFF" />
+              </button>
+
               {/* Volume Button + Expander Slider matching PlaybackControls.qml lines 265-370 */}
               <div className="flex items-center space-x-1.5 group/vol">
                 <button
@@ -789,6 +815,17 @@ export const PlayerView: React.FC = () => {
 
             {/* Right Controls */}
             <div className="flex items-center space-x-2">
+              {/* Audio & Subtitles Menu Toggle matching PlaybackControls.qml line 386 */}
+              <button
+                onClick={() => setTracksPopupOpen(!tracksPopupOpen)}
+                className={`w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer ${
+                  tracksPopupOpen ? 'text-[#5865F2] bg-white/10' : 'text-white'
+                }`}
+                title="Audio & Subtitles"
+              >
+                <FluxIcon name="subtitles" size={24} color={tracksPopupOpen ? '#5865F2' : '#FFFFFF'} />
+              </button>
+
               {/* Speed Selector */}
               <div className="relative">
                 <button
@@ -857,6 +894,100 @@ export const PlayerView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Floating Audio & Subtitles Popup Card matching screenshot & PlaybackControls.qml line 412 */}
+      {tracksPopupOpen && !isEmbed && !isMkv && (
+        <div className="absolute right-8 bottom-28 z-40 w-[460px] max-w-[92vw] rounded-2xl bg-[#101015]/95 border border-white/20 p-5 shadow-2xl backdrop-blur-md animate-fadeIn flex flex-col space-y-4">
+          {/* Dual Columns: Audio & Subtitles */}
+          <div className="grid grid-cols-2 gap-6 h-52">
+            {/* Audio Column */}
+            <div className="flex flex-col space-y-2 overflow-hidden">
+              <h3 className="text-sm font-bold text-white tracking-wide">Audio</h3>
+              <div className="flex flex-col space-y-1 overflow-y-auto pr-1">
+                {['Disable', 'Japanese', 'English'].map((track) => {
+                  const isSel = selectedAudioTrack === track;
+                  return (
+                    <button
+                      key={track}
+                      onClick={() => {
+                        setSelectedAudioTrack(track);
+                        showOsd(`Audio: ${track}`);
+                      }}
+                      className="w-full h-9 px-2.5 rounded-lg hover:bg-white/10 flex items-center space-x-2.5 text-left transition-colors cursor-pointer"
+                    >
+                      <span className="w-4 text-center font-bold text-sm text-[#5865F2]">
+                        {isSel ? '✓' : ''}
+                      </span>
+                      <span className={`text-xs font-semibold ${isSel ? 'text-white' : 'text-[#949BA4]'}`}>
+                        {track}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Vertical Divider */}
+            <div className="absolute left-1/2 top-5 bottom-20 w-px bg-white/10" />
+
+            {/* Subtitles Column */}
+            <div className="flex flex-col space-y-2 overflow-hidden pl-2">
+              <h3 className="text-sm font-bold text-white tracking-wide">Subtitles</h3>
+              <div className="flex flex-col space-y-1 overflow-y-auto pr-1">
+                {['Disable', 'Japanese', 'Japanese · SDH', 'English', 'English (2)', 'English · SDH'].map((sub) => {
+                  const isSel = selectedSubtitleTrack === sub;
+                  return (
+                    <button
+                      key={sub}
+                      onClick={() => {
+                        setSelectedSubtitleTrack(sub);
+                        showOsd(`Subtitles: ${sub}`);
+                      }}
+                      className="w-full h-9 px-2.5 rounded-lg hover:bg-white/10 flex items-center space-x-2.5 text-left transition-colors cursor-pointer"
+                    >
+                      <span className="w-4 text-center font-bold text-sm text-[#5865F2]">
+                        {isSel ? '✓' : ''}
+                      </span>
+                      <span className={`text-xs font-semibold ${isSel ? 'text-white' : 'text-[#949BA4]'}`}>
+                        {sub}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Horizontal Divider */}
+          <div className="h-px bg-white/10 w-full" />
+
+          {/* Bottom Preference: Autoplay Next Episode */}
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-white">Autoplay next episode</span>
+              <span className="text-[11px] text-[#949BA4]">
+                Continue with the next file in the folder when this one ends
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setAutoplayNext(!autoplayNext);
+                showOsd(!autoplayNext ? 'Autoplay Next Enabled' : 'Autoplay Next Disabled');
+              }}
+              className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer p-0.5 ${
+                autoplayNext ? 'bg-[#5865F2]' : 'bg-[#383A40]'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                  autoplayNext ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

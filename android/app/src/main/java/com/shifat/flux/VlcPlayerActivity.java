@@ -3,12 +3,17 @@ package com.shifat.flux;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.GestureDetector;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
@@ -16,6 +21,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
@@ -23,6 +29,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -52,11 +59,12 @@ public class VlcPlayerActivity extends AppCompatActivity {
 
     private RelativeLayout mLayoutControls;
     private View mTouchOverlay;
+    private View mPausedDimmer;
+    private FrameLayout mBtnCenterPlay;
     private LinearLayout mLayoutBuffering;
     private TextView mTvBufferingText;
     private FrameLayout mLayoutOsd;
     private TextView mTvOsd;
-    private ImageButton mBtnUnlockScreen;
 
     private ImageButton mBtnBack;
     private TextView mTvTitle;
@@ -67,21 +75,33 @@ public class VlcPlayerActivity extends AppCompatActivity {
     private SeekBar mPlayerSeekbar;
     private TextView mTvTotalTime;
 
-    private ImageButton mBtnReplay10;
     private ImageButton mBtnPlayPause;
+    private ImageButton mBtnReplay10;
     private ImageButton mBtnForward10;
-    private Button mBtnSpeed;
+    private ImageButton mBtnNextEpisode;
+    private ImageButton mBtnVolumeMute;
+    private SeekBar mVolumeSeekbar;
+    private ImageButton mBtnEpisodes;
+    private ImageButton mBtnTracks;
     private Button mBtnAspect;
-    private ImageButton mBtnLock;
+    private ImageButton mBtnFullscreen;
+
+    // Audio & Subtitles Popup
+    private LinearLayout mPopupTracks;
+    private LinearLayout mListAudioTracks;
+    private LinearLayout mListSubtitleTracks;
+    private SwitchCompat mSwitchAutoplay;
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private Runnable mHideControlsRunnable;
     private Runnable mHideOsdRunnable;
 
     private boolean mIsControlsVisible = true;
-    private boolean mIsLocked = false;
     private boolean mIsUserSeeking = false;
     private boolean mIsCompleted = false;
+    private boolean mIsMuted = false;
+    private int mLastUnmutedVolume = 100;
+    private boolean mIsFullscreen = true;
 
     private String mCurrentUrl;
     private String mTitle;
@@ -90,15 +110,11 @@ public class VlcPlayerActivity extends AppCompatActivity {
     private long mLastPositionMs = 0;
     private long mDurationMs = 0;
 
-    private final float[] SPEED_PRESETS = new float[]{1.0f, 1.25f, 1.5f, 2.0f, 0.5f, 0.75f};
-    private int mCurrentSpeedIndex = 0;
-
     private final String[] ASPECT_PRESETS = new String[]{"Fit", "16:9", "4:3", "Fill"};
     private int mCurrentAspectIndex = 0;
 
     private AudioManager mAudioManager;
-    private int mMaxStreamVolume;
-    private float mCurrentBrightness = -1f;
+    private SharedPreferences mPrefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,9 +132,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
         hideSystemUI();
 
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        if (mAudioManager != null) {
-            mMaxStreamVolume = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        }
+        mPrefs = getSharedPreferences("flux_player_prefs", MODE_PRIVATE);
 
         extractIntentExtras();
         initViews();
@@ -153,19 +167,20 @@ public class VlcPlayerActivity extends AppCompatActivity {
             mTitle = "FLUX Player";
         }
         if (mQuality == null || mQuality.isEmpty()) {
-            mQuality = "HD";
+            mQuality = "1080p";
         }
     }
 
     private void initViews() {
         mVideoLayout = findViewById(R.id.vlc_video_layout);
         mTouchOverlay = findViewById(R.id.touch_overlay);
+        mPausedDimmer = findViewById(R.id.paused_dimmer);
+        mBtnCenterPlay = findViewById(R.id.btn_center_play);
         mLayoutControls = findViewById(R.id.layout_controls);
         mLayoutBuffering = findViewById(R.id.layout_buffering);
         mTvBufferingText = findViewById(R.id.tv_buffering_text);
         mLayoutOsd = findViewById(R.id.layout_osd);
         mTvOsd = findViewById(R.id.tv_osd);
-        mBtnUnlockScreen = findViewById(R.id.btn_unlock_screen);
 
         mBtnBack = findViewById(R.id.btn_back);
         mTvTitle = findViewById(R.id.tv_player_title);
@@ -176,15 +191,31 @@ public class VlcPlayerActivity extends AppCompatActivity {
         mPlayerSeekbar = findViewById(R.id.player_seekbar);
         mTvTotalTime = findViewById(R.id.tv_total_time);
 
-        mBtnReplay10 = findViewById(R.id.btn_replay_10);
         mBtnPlayPause = findViewById(R.id.btn_play_pause);
+        mBtnReplay10 = findViewById(R.id.btn_replay_10);
         mBtnForward10 = findViewById(R.id.btn_forward_10);
-        mBtnSpeed = findViewById(R.id.btn_speed);
+        mBtnNextEpisode = findViewById(R.id.btn_next_episode);
+        mBtnVolumeMute = findViewById(R.id.btn_volume_mute);
+        mVolumeSeekbar = findViewById(R.id.volume_seekbar);
+        mBtnEpisodes = findViewById(R.id.btn_episodes);
+        mBtnTracks = findViewById(R.id.btn_tracks);
         mBtnAspect = findViewById(R.id.btn_aspect);
-        mBtnLock = findViewById(R.id.btn_lock);
+        mBtnFullscreen = findViewById(R.id.btn_fullscreen);
+
+        mPopupTracks = findViewById(R.id.popup_tracks);
+        mListAudioTracks = findViewById(R.id.list_audio_tracks);
+        mListSubtitleTracks = findViewById(R.id.list_subtitle_tracks);
+        mSwitchAutoplay = findViewById(R.id.switch_autoplay);
 
         mTvTitle.setText(mTitle);
         mTvQuality.setText(mQuality);
+
+        boolean autoplay = mPrefs.getBoolean("autoplay_next", true);
+        mSwitchAutoplay.setChecked(autoplay);
+        mSwitchAutoplay.setOnCheckedChangeListener((btn, isChecked) -> {
+            mPrefs.edit().putBoolean("autoplay_next", isChecked).apply();
+            showOsd(isChecked ? "Autoplay Next Enabled" : "Autoplay Next Disabled");
+        });
 
         setupSourcesPills();
     }
@@ -259,7 +290,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
                     float percent = event.getBuffering();
                     if (percent < 100f) {
                         mLayoutBuffering.setVisibility(View.VISIBLE);
-                        mTvBufferingText.setText(String.format(Locale.US, "Buffering stream... %d%%", (int) percent));
+                        mTvBufferingText.setText(String.format(Locale.US, "Buffering %d%%", (int) percent));
                     } else {
                         mLayoutBuffering.setVisibility(View.GONE);
                     }
@@ -267,11 +298,15 @@ public class VlcPlayerActivity extends AppCompatActivity {
 
                 case MediaPlayer.Event.Playing:
                     mLayoutBuffering.setVisibility(View.GONE);
+                    mPausedDimmer.setVisibility(View.GONE);
+                    mBtnCenterPlay.setVisibility(View.GONE);
                     mBtnPlayPause.setImageResource(R.drawable.ic_player_pause);
                     scheduleHideControls();
                     break;
 
                 case MediaPlayer.Event.Paused:
+                    mPausedDimmer.setVisibility(View.VISIBLE);
+                    mBtnCenterPlay.setVisibility(View.VISIBLE);
                     mBtnPlayPause.setImageResource(R.drawable.ic_player_play);
                     showControls();
                     break;
@@ -293,6 +328,8 @@ public class VlcPlayerActivity extends AppCompatActivity {
 
                 case MediaPlayer.Event.EndReached:
                     mIsCompleted = true;
+                    mPausedDimmer.setVisibility(View.VISIBLE);
+                    mBtnCenterPlay.setVisibility(View.VISIBLE);
                     mBtnPlayPause.setImageResource(R.drawable.ic_player_play);
                     showControls();
                     break;
@@ -309,7 +346,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
         if (url == null || url.isEmpty() || mMediaPlayer == null) return;
 
         mLayoutBuffering.setVisibility(View.VISIBLE);
-        mTvBufferingText.setText("Connecting to BDIX stream...");
+        mTvBufferingText.setText("Connecting to stream...");
 
         try {
             Uri uri = Uri.parse(url);
@@ -336,7 +373,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
     private void setupListeners() {
         mBtnBack.setOnClickListener(v -> finishWithResult());
 
-        mBtnPlayPause.setOnClickListener(v -> {
+        View.OnClickListener togglePlayListener = v -> {
             if (mMediaPlayer == null) return;
             if (mMediaPlayer.isPlaying()) {
                 mMediaPlayer.pause();
@@ -346,19 +383,47 @@ public class VlcPlayerActivity extends AppCompatActivity {
                 showOsd("Play");
             }
             scheduleHideControls();
-        });
+        };
+
+        mBtnPlayPause.setOnClickListener(togglePlayListener);
+        mBtnCenterPlay.setOnClickListener(togglePlayListener);
 
         mBtnReplay10.setOnClickListener(v -> seekRelative(-10000));
         mBtnForward10.setOnClickListener(v -> seekRelative(10000));
 
-        mBtnSpeed.setOnClickListener(v -> {
-            mCurrentSpeedIndex = (mCurrentSpeedIndex + 1) % SPEED_PRESETS.length;
-            float speed = SPEED_PRESETS[mCurrentSpeedIndex];
-            if (mMediaPlayer != null) {
-                mMediaPlayer.setRate(speed);
+        mBtnNextEpisode.setOnClickListener(v -> {
+            showOsd("Next Episode");
+            scheduleHideControls();
+        });
+
+        mBtnVolumeMute.setOnClickListener(v -> toggleMute());
+
+        mVolumeSeekbar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser && mMediaPlayer != null) {
+                    mMediaPlayer.setVolume(progress);
+                    mIsMuted = (progress == 0);
+                    mBtnVolumeMute.setImageResource(mIsMuted ? R.drawable.ic_player_volume_mute : R.drawable.ic_player_volume_high);
+                    showOsd("Volume " + progress + "%");
+                }
             }
-            mBtnSpeed.setText(String.format(Locale.US, "%.2gx", speed));
-            showOsd("Speed: " + String.format(Locale.US, "%.2gx", speed));
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+                cancelHideControls();
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                scheduleHideControls();
+            }
+        });
+
+        mBtnTracks.setOnClickListener(v -> toggleTracksPopup());
+
+        mBtnEpisodes.setOnClickListener(v -> {
+            showOsd("Episodes list");
             scheduleHideControls();
         });
 
@@ -371,8 +436,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
             scheduleHideControls();
         });
 
-        mBtnLock.setOnClickListener(v -> toggleLock(true));
-        mBtnUnlockScreen.setOnClickListener(v -> toggleLock(false));
+        mBtnFullscreen.setOnClickListener(v -> toggleFullscreen());
 
         mPlayerSeekbar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -400,6 +464,150 @@ public class VlcPlayerActivity extends AppCompatActivity {
                 scheduleHideControls();
             }
         });
+    }
+
+    private void toggleMute() {
+        if (mMediaPlayer == null) return;
+        mIsMuted = !mIsMuted;
+        if (mIsMuted) {
+            mLastUnmutedVolume = mMediaPlayer.getVolume();
+            mMediaPlayer.setVolume(0);
+            mVolumeSeekbar.setProgress(0);
+            mBtnVolumeMute.setImageResource(R.drawable.ic_player_volume_mute);
+            showOsd("Muted");
+        } else {
+            int vol = mLastUnmutedVolume > 0 ? mLastUnmutedVolume : 100;
+            mMediaPlayer.setVolume(vol);
+            mVolumeSeekbar.setProgress(vol);
+            mBtnVolumeMute.setImageResource(R.drawable.ic_player_volume_high);
+            showOsd("Volume " + vol + "%");
+        }
+    }
+
+    private void toggleFullscreen() {
+        mIsFullscreen = !mIsFullscreen;
+        if (mIsFullscreen) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen_exit);
+            showOsd("Fullscreen");
+        } else {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            mBtnFullscreen.setImageResource(R.drawable.ic_player_fullscreen);
+            showOsd("Windowed Mode");
+        }
+        hideSystemUI();
+    }
+
+    private void toggleTracksPopup() {
+        if (mPopupTracks.getVisibility() == View.VISIBLE) {
+            mPopupTracks.setVisibility(View.GONE);
+            scheduleHideControls();
+        } else {
+            populateTracksMenu();
+            mPopupTracks.setVisibility(View.VISIBLE);
+            cancelHideControls();
+        }
+    }
+
+    private void populateTracksMenu() {
+        mListAudioTracks.removeAllViews();
+        mListSubtitleTracks.removeAllViews();
+
+        if (mMediaPlayer == null) return;
+
+        // Populate Audio Tracks
+        MediaPlayer.TrackDescription[] audioTracks = mMediaPlayer.getAudioTracks();
+        int currentAudioId = mMediaPlayer.getAudioTrack();
+
+        if (audioTracks != null && audioTracks.length > 0) {
+            for (MediaPlayer.TrackDescription track : audioTracks) {
+                final int id = track.id;
+                final String name = track.name;
+                final boolean isSelected = (id == currentAudioId);
+
+                View itemView = createTrackRow(name, isSelected, () -> {
+                    mMediaPlayer.setAudioTrack(id);
+                    populateTracksMenu();
+                    showOsd("Audio: " + name);
+                });
+                mListAudioTracks.addView(itemView);
+            }
+        } else {
+            TextView emptyText = new TextView(this);
+            emptyText.setText("No audio tracks");
+            emptyText.setTextColor(0x80949BA4);
+            emptyText.setTextSize(12f);
+            mListAudioTracks.addView(emptyText);
+        }
+
+        // Populate Subtitle (SPU) Tracks
+        MediaPlayer.TrackDescription[] spuTracks = mMediaPlayer.getSpuTracks();
+        int currentSpuId = mMediaPlayer.getSpuTrack();
+
+        if (spuTracks != null && spuTracks.length > 0) {
+            for (MediaPlayer.TrackDescription track : spuTracks) {
+                final int id = track.id;
+                final String name = track.name;
+                final boolean isSelected = (id == currentSpuId);
+
+                View itemView = createTrackRow(name, isSelected, () -> {
+                    mMediaPlayer.setSpuTrack(id);
+                    populateTracksMenu();
+                    showOsd("Subtitles: " + name);
+                });
+                mListSubtitleTracks.addView(itemView);
+            }
+        } else {
+            TextView emptyText = new TextView(this);
+            emptyText.setText("No subtitles available");
+            emptyText.setTextColor(0x80949BA4);
+            emptyText.setTextSize(12f);
+            mListSubtitleTracks.addView(emptyText);
+        }
+    }
+
+    private View createTrackRow(String label, boolean isSelected, Runnable onClick) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setBackgroundResource(R.drawable.bg_round_button);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(38)
+        );
+        lp.bottomMargin = dpToPx(2);
+        row.setLayoutParams(lp);
+
+        // Checkmark indicator
+        ImageView check = new ImageView(this);
+        check.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(16), dpToPx(16)));
+        if (isSelected) {
+            check.setImageResource(R.drawable.ic_check);
+        } else {
+            check.setVisibility(View.INVISIBLE);
+        }
+        row.addView(check);
+
+        // Track label
+        TextView text = new TextView(this);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        textLp.setMarginStart(dpToPx(10));
+        text.setLayoutParams(textLp);
+        text.setText(label);
+        text.setTextColor(isSelected ? Color.WHITE : 0xCCDBDEE1);
+        text.setTextSize(13f);
+        text.setTypeface(null, isSelected ? Typeface.BOLD : Typeface.NORMAL);
+        row.addView(text);
+
+        row.setOnClickListener(v -> onClick.run());
+        return row;
     }
 
     private void seekRelative(long deltaMs) {
@@ -435,29 +643,12 @@ public class VlcPlayerActivity extends AppCompatActivity {
         }
     }
 
-    private void toggleLock(boolean locked) {
-        mIsLocked = locked;
-        if (mIsLocked) {
-            mLayoutControls.setVisibility(View.GONE);
-            mBtnUnlockScreen.setVisibility(View.VISIBLE);
-            showOsd("Screen Locked");
-            mHandler.postDelayed(() -> mBtnUnlockScreen.setVisibility(View.GONE), 3000);
-        } else {
-            mBtnUnlockScreen.setVisibility(View.GONE);
-            mLayoutControls.setVisibility(View.VISIBLE);
-            showOsd("Screen Unlocked");
-            scheduleHideControls();
-        }
-    }
-
     private void setupGestureDetector() {
         GestureDetector gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
-                if (mIsLocked) {
-                    mBtnUnlockScreen.setVisibility(
-                            mBtnUnlockScreen.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE
-                    );
+                if (mPopupTracks.getVisibility() == View.VISIBLE) {
+                    mPopupTracks.setVisibility(View.GONE);
                     return true;
                 }
                 toggleControls();
@@ -466,7 +657,6 @@ public class VlcPlayerActivity extends AppCompatActivity {
 
             @Override
             public boolean onDoubleTap(MotionEvent e) {
-                if (mIsLocked) return true;
                 int screenWidth = getResources().getDisplayMetrics().widthPixels;
                 if (e.getX() < screenWidth / 2f) {
                     seekRelative(-10000);
@@ -475,62 +665,12 @@ public class VlcPlayerActivity extends AppCompatActivity {
                 }
                 return true;
             }
-
-            @Override
-            public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-                if (mIsLocked || e1 == null || e2 == null) return false;
-
-                int screenWidth = getResources().getDisplayMetrics().widthPixels;
-                int screenHeight = getResources().getDisplayMetrics().heightPixels;
-
-                // Vertical swipe on right half: Volume
-                if (e1.getX() > screenWidth * 0.55f && Math.abs(distanceY) > Math.abs(distanceX)) {
-                    adjustVolume(distanceY / screenHeight);
-                    return true;
-                }
-
-                // Vertical swipe on left half: Brightness
-                if (e1.getX() < screenWidth * 0.45f && Math.abs(distanceY) > Math.abs(distanceX)) {
-                    adjustBrightness(distanceY / screenHeight);
-                    return true;
-                }
-
-                return false;
-            }
         });
 
         mTouchOverlay.setOnTouchListener((v, event) -> {
             gestureDetector.onTouchEvent(event);
             return true;
         });
-    }
-
-    private void adjustVolume(float delta) {
-        if (mAudioManager == null) return;
-        int currentVol = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        int change = (int) (delta * mMaxStreamVolume * 1.5f);
-        if (change == 0) {
-            change = delta > 0 ? 1 : -1;
-        }
-        int newVol = Math.max(0, Math.min(mMaxStreamVolume, currentVol + change));
-        mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
-
-        int percent = (int) ((newVol / (float) mMaxStreamVolume) * 100);
-        showOsd("Volume: " + percent + "%");
-    }
-
-    private void adjustBrightness(float delta) {
-        WindowManager.LayoutParams lp = getWindow().getAttributes();
-        if (mCurrentBrightness < 0) {
-            mCurrentBrightness = lp.screenBrightness;
-            if (mCurrentBrightness < 0) mCurrentBrightness = 0.5f;
-        }
-        mCurrentBrightness = Math.max(0.05f, Math.min(1.0f, mCurrentBrightness + (delta * 0.8f)));
-        lp.screenBrightness = mCurrentBrightness;
-        getWindow().setAttributes(lp);
-
-        int percent = (int) (mCurrentBrightness * 100);
-        showOsd("Brightness: " + percent + "%");
     }
 
     private void updateProgressUI(long currentMs, long totalMs) {
@@ -573,6 +713,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
     private void hideControls() {
         mIsControlsVisible = false;
         mLayoutControls.setVisibility(View.GONE);
+        mPopupTracks.setVisibility(View.GONE);
         hideSystemUI();
         cancelHideControls();
     }
@@ -580,7 +721,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
     private void scheduleHideControls() {
         cancelHideControls();
         mHideControlsRunnable = () -> {
-            if (mMediaPlayer != null && mMediaPlayer.isPlaying() && !mIsUserSeeking) {
+            if (mMediaPlayer != null && mMediaPlayer.isPlaying() && !mIsUserSeeking && mPopupTracks.getVisibility() != View.VISIBLE) {
                 hideControls();
             }
         };
@@ -614,8 +755,8 @@ public class VlcPlayerActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (mIsLocked) {
-            showOsd("Screen is locked. Tap unlock button to exit.");
+        if (mPopupTracks.getVisibility() == View.VISIBLE) {
+            mPopupTracks.setVisibility(View.GONE);
             return;
         }
         finishWithResult();
