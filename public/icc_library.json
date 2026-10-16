@@ -1,0 +1,162 @@
+[
+  {
+    "id": "icc_eng_movies",
+    "name": "English Movies",
+    "group": "English Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=19",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=19"
+  },
+  {
+    "id": "icc_excl_1080p",
+    "name": "Exclusive Full-HD",
+    "group": "English Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=44",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=44"
+  },
+  {
+    "id": "icc_4k",
+    "name": "4K Movies",
+    "group": "English Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=74",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=74"
+  },
+  {
+    "id": "icc_3d",
+    "name": "3D Movies",
+    "group": "English Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=9",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=9"
+  },
+  {
+    "id": "icc_hindi",
+    "name": "Hindi Movies",
+    "group": "Hindi Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=2",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=2"
+  },
+  {
+    "id": "icc_south_dubbed",
+    "name": "South-Movie Hindi Dubbed",
+    "group": "Hindi Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=32",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=32"
+  },
+  {
+    "id": "icc_dual_audio",
+    "name": "Dual Audio",
+    "group": "Hindi Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=43",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=43"
+  },
+  {
+    "id": "icc_animated",
+    "name": "Animation Movies",
+    "group": "Animation",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=33",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=33"
+  },
+  {
+    "id": "icc_anime",
+    "name": "Anime Movies",
+    "group": "Animation",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=83",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=83"
+  },
+  {
+    "id": "icc_serials_anime",
+    "name": "Serials (Anime)",
+    "group": "Animation",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=78",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=78"
+  },
+  {
+    "id": "icc_foreign",
+    "name": "Other Foreign Movie",
+    "group": "Other Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=64",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=64"
+  },
+  {
+    "id": "icc_korean",
+    "name": "Korean Movies",
+    "group": "Other Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=75",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=75"
+  },
+  {
+    "id": "icc_documentary",
+    "name": "Documentaries",
+    "group": "Other Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=41",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=41"
+  },
+  {
+    "id": "icc_south",
+    "name": "South Indian Movies",
+    "group": "Regional Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=73",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=73"
+  },
+  {
+    "id": "icc_chinese",
+    "name": "Chinese Movies",
+    "group": "Regional Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=76",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=76"
+  },
+  {
+    "id": "icc_japanese",
+    "name": "Japanese Movies",
+    "group": "Regional Movies",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=80",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=80"
+  },
+  {
+    "id": "icc_series_eng",
+    "name": "TV & Web Series (Eng)",
+    "group": "TV & Web Series",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=36",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=36"
+  },
+  {
+    "id": "icc_series_hindi",
+    "name": "TV & Web Series (Hindi)",
+    "group": "TV & Web Series",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=37",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=37"
+  },
+  {
+    "id": "icc_series_dual",
+    "name": "TV Series (Dual Audio)",
+    "group": "TV & Web Series",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=72",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=72"
+  },
+  {
+    "id": "icc_wwe",
+    "name": "WWE Wrestling",
+    "group": "TV & Web Series",
+    "url": "http://10.16.100.244/dashboard.php?session=b1bdfdae1f7e206b628274ef7eafadcd6094e07c46cd85b157c595174a369f96&category=52",
+    "serverOrigin": "http://10.16.100.244",
+    "href": "/dashboard.php?category=52"
+  }
+]

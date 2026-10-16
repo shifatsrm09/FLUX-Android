@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">172.16.50.4</domain>
+        <domain includeSubdomains="true">172.16.50.6</domain>
+        <domain includeSubdomains="true">172.16.50.7</domain>
+        <domain includeSubdomains="true">172.16.50.8</domain>
+        <domain includeSubdomains="true">172.16.50.9</domain>
+        <domain includeSubdomains="true">172.16.50.10</domain>
+        <domain includeSubdomains="true">172.16.50.11</domain>
+        <domain includeSubdomains="true">172.16.50.12</domain>
+        <domain includeSubdomains="true">172.16.50.13</domain>
+        <domain includeSubdomains="true">172.16.50.14</domain>
+        <domain includeSubdomains="true">10.16.100.200</domain>
+        <domain includeSubdomains="true">10.16.100.201</domain>
+        <domain includeSubdomains="true">10.16.100.202</domain>
+        <domain includeSubdomains="true">10.16.100.203</domain>
+        <domain includeSubdomains="true">10.16.100.204</domain>
+        <domain includeSubdomains="true">10.16.100.244</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

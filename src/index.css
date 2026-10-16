@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  --color-accent: #5865F2;
+  --color-accent-hover: #4752C4;
+  --color-accent-pressed: #3C45A5;
+  --color-bg: #1E1F22;
+  --color-bg-raised: #2B2D31;
+  --color-surface: #313338;
+  --color-surface-hi: #383A40;
+  --color-surface-top: #404249;
+  --color-border: #2B2D31;
+  --color-border-hi: #4E5058;
+  --color-text: #F2F3F5;
+  --color-text-dim: #949BA4;
+  --color-text-mute: #80848E;
+  --color-success: #23A55A;
+  --color-warning: #F0B232;
+  --color-danger: #F23F43;
+
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  background-color: #1E1F22;
+  color: #F2F3F5;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Custom Scrollbar matching FluxScrollBar.qml */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Smooth range input styling for video seek bar and volume */
+input[type="range"] {
+  accent-color: #5865F2;
+}
+
+/* Shimmer animation for skeleton tiles */
+@keyframes shimmer {
+  0% { opacity: 0.35; }
+  50% { opacity: 0.85; }
+  100% { opacity: 0.35; }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* Equalizer bar animation */
+@keyframes eqBar1 {
+  0%, 100% { height: 4px; }
+  50% { height: 14px; }
+}
+@keyframes eqBar2 {
+  0%, 100% { height: 14px; }
+  50% { height: 6px; }
+}
+@keyframes eqBar3 {
+  0%, 100% { height: 8px; }
+  50% { height: 16px; }
+}
+
+.animate-eq-1 { animation: eqBar1 0.75s ease-in-out infinite; }
+.animate-eq-2 { animation: eqBar2 0.6s ease-in-out infinite; }
+.animate-eq-3 { animation: eqBar3 0.9s ease-in-out infinite; }
