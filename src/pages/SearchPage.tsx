@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useFlux } from '../stores/useFluxStore';
 import { SearchResultCard } from '../components/SearchResultCard';
-import { CategoryFilterModal } from '../components/CategoryFilterModal';
+import { CategoryFilterSection } from '../components/CategoryFilterSection';
 import { FluxIcon } from '../components/FluxIcon';
 import { TOP_PICKS } from '../data/topPicks';
 import { executeSearch, fetchTrending, fetchFolderItems } from '../services/searchService';
@@ -14,8 +14,6 @@ interface SearchPageProps {
 export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = false }) => {
   const {
     state,
-    getCurrentRoots,
-    selectCategory,
     setActiveServer,
     setSearchQuery,
     setSearchResults,
@@ -25,11 +23,10 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
     removeFromHistory,
   } = useFlux();
 
-  const roots = getCurrentRoots();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const continueScrollRef = useRef<HTMLDivElement>(null);
 
-  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(true);
   const [showAllTrending, setShowAllTrending] = useState(false);
   const [showAllTopPicks, setShowAllTopPicks] = useState(false);
   const [browsingFolder, setBrowsingFolder] = useState<SearchResult | null>(null);
@@ -88,6 +85,25 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
     setIsFolderLoading(false);
   };
 
+  const handleSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const q = state.searchQuery.trim();
+    if (q) {
+      setCategoriesExpanded(false);
+      setIsSearching(true, `Searching for "${q}"...`);
+      executeSearch(
+        q,
+        state.activeServer,
+        state.selectedCategoryIds,
+        state.isAllSelected,
+        state.settings.proxyMode,
+        state.settings.customProxyUrl
+      ).then((results) => {
+        setSearchResults(results);
+      });
+    }
+  };
+
   const scrollContinue = (direction: 'left' | 'right') => {
     if (continueScrollRef.current) {
       const scrollAmount = continueScrollRef.current.clientWidth * 0.75;
@@ -108,7 +124,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
     return `Watched ${totalMinutes} min`;
   }
 
-  const isSearching = state.searchQuery.trim().length > 0 || isSearchActiveTab;
+  const isSearchMode = isSearchActiveTab || state.searchQuery.trim().length > 0;
   const continueWatching = state.history.filter((h) => !h.isFolder && h.timestampMs > 1000);
 
   // Trending items count to show
@@ -168,44 +184,57 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
             </div>
           )}
         </div>
-      ) : isSearching ? (
+      ) : isSearchMode ? (
         /* =========================================================================
-           VIEW B: Search Results View (Center Server Pill, Search Bar, Categories)
+           VIEW B: 1:1 MATCH OF NATIVE WINDOWS FLUX SEARCH PAGE (Screenshot Match)
            ========================================================================= */
-        <div className="space-y-6 pt-2 animate-fadeIn">
-          {/* 1. Server Selector Pill Centered */}
-          <div className="flex justify-center pt-2">
-            <div className="inline-flex p-1 rounded-full bg-[#313338] border border-[#2B2D31] shadow-lg">
+        <div className="space-y-6 pt-3 animate-fadeIn">
+          {/* 1. Server Selector Pill Centered matching SearchPage.qml lines 953-1114 */}
+          <div className="flex justify-center pt-1">
+            <div className="inline-flex h-[42px] p-1 rounded-full bg-[#313338] border border-[#2B2D31] shadow-lg items-center">
+              {/* Server 1 (Dhaka Flix) */}
               <button
-                onClick={() => setActiveServer(1)}
-                className={`flex items-center space-x-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                onClick={() => {
+                  setActiveServer(1);
+                  setCategoriesExpanded(true);
+                }}
+                className={`flex items-center space-x-2 h-[34px] px-5 rounded-full text-[13px] transition-all cursor-pointer ${
                   state.activeServer === 1
-                    ? 'bg-[#5865F2] text-white shadow-md'
-                    : 'text-[#949BA4] hover:text-white'
+                    ? 'bg-[#5865F2] text-white font-bold shadow-md'
+                    : 'text-[#949BA4] hover:text-white font-normal'
                 }`}
               >
-                {state.activeServer === 1 && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                {state.activeServer === 1 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                )}
                 <span>Server 1 (Dhaka Flix)</span>
               </button>
 
+              {/* Server 2 (ICC FTP) */}
               <button
-                onClick={() => setActiveServer(2)}
-                className={`flex items-center space-x-2 px-5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                onClick={() => {
+                  setActiveServer(2);
+                  setCategoriesExpanded(true);
+                }}
+                className={`flex items-center space-x-2 h-[34px] px-5 rounded-full text-[13px] transition-all cursor-pointer ${
                   state.activeServer === 2
-                    ? 'bg-[#5865F2] text-white shadow-md'
-                    : 'text-[#949BA4] hover:text-white'
+                    ? 'bg-[#5865F2] text-white font-bold shadow-md'
+                    : 'text-[#949BA4] hover:text-white font-normal'
                 }`}
               >
-                {state.activeServer === 2 && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                {state.activeServer === 2 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                )}
                 <span>Server 2 (ICC FTP)</span>
               </button>
             </div>
           </div>
 
-          {/* 2. Compact Search Input Bar Centered */}
-          <div className="flex justify-center">
-            <div className="relative w-full max-w-lg">
-              <div className="relative flex items-center">
+          {/* 2. Compact Search Input Bar + Blue "Search" Button Centered matching QML lines 1117-1210 */}
+          <form onSubmit={handleSearchSubmit} className="flex justify-center">
+            <div className="flex items-center space-x-2.5 w-full max-w-lg">
+              {/* Input container */}
+              <div className="relative grow h-11 rounded-full bg-[#313338] border border-[#2B2D31] focus-within:border-[#5865F2] focus-within:ring-1 focus-within:ring-[#5865F2] shadow-md flex items-center transition-all">
                 <div className="absolute left-4 pointer-events-none">
                   <FluxIcon name="search" size={18} color="#80848E" />
                 </div>
@@ -214,94 +243,92 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                   type="text"
                   value={state.searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={`Search ${state.activeServer === 2 ? 'ICC FTP' : 'Dhaka Flix'} media...`}
-                  className="w-full pl-11 pr-11 py-3 rounded-full bg-[#313338] border border-[#2B2D31] focus:border-[#5865F2] text-sm text-white placeholder-[#80848E] shadow-xl focus:outline-none transition-all"
+                  placeholder="Search movies, shows, episodes..."
+                  className="w-full pl-11 pr-10 h-full bg-transparent text-[13px] text-white placeholder-[#80848E] focus:outline-none"
                 />
                 {state.searchQuery && (
                   <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3.5 w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setCategoriesExpanded(true);
+                    }}
+                    className="absolute right-3.5 w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
                   >
                     ×
                   </button>
                 )}
               </div>
+
+              {/* Blue "Search" Pill Button matching FluxButton text="Search" implicitHeight: 44 */}
+              <button
+                type="submit"
+                className="h-11 px-6 rounded-full bg-[#5865F2] hover:bg-[#4752C4] active:bg-[#3C45A5] text-white text-xs font-bold tracking-wide transition-all cursor-pointer shadow-lg shadow-[#5865F2]/25 shrink-0"
+              >
+                Search
+              </button>
             </div>
+          </form>
+
+          {/* 3. CategoryFilterSection matching native CategoryFilterSection.qml */}
+          <div className="w-full">
+            <CategoryFilterSection
+              isExpanded={categoriesExpanded}
+              onToggleExpanded={() => setCategoriesExpanded(!categoriesExpanded)}
+              onSelectionChanged={() => {
+                if (state.searchQuery.trim()) {
+                  handleSearchSubmit();
+                }
+              }}
+            />
           </div>
 
-          {/* 3. Category Checkpoints Row */}
-          <div className="flex items-center justify-center space-x-2 overflow-x-auto pb-1 max-w-4xl mx-auto no-scrollbar">
-            <button
-              onClick={() => selectCategory('all')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                state.isAllSelected
-                  ? 'bg-[#5865F2] text-white shadow'
-                  : 'bg-[#313338] text-[#949BA4] hover:text-white hover:bg-[#383A40]'
-              }`}
-            >
-              All Categories
-            </button>
-
-            {roots.slice(0, 6).map((root) => {
-              const isSelected = !state.isAllSelected && state.selectedCategoryIds.includes(root.id);
-              return (
-                <button
-                  key={root.id}
-                  onClick={() => selectCategory(root.id)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                    isSelected
-                      ? 'bg-[#5865F2] text-white shadow'
-                      : 'bg-[#313338] text-[#949BA4] hover:text-white hover:bg-[#383A40]'
-                  }`}
-                >
-                  {root.name}
-                </button>
-              );
-            })}
-
-            <button
-              onClick={() => setFilterModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#313338] border border-[#2B2D31] text-white hover:bg-[#383A40] flex items-center space-x-1.5 transition-colors cursor-pointer"
-            >
-              <span>Filters</span>
-            </button>
-          </div>
-
-          {/* 4. Results Header & Grid */}
-          <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between border-b border-[#2B2D31] pb-2">
-              <h2 className="text-sm font-bold text-white tracking-wide">
-                {state.isSearching
-                  ? `Searching for "${state.searchQuery}"...`
-                  : `${state.searchResults.length} results found`}
-              </h2>
+          {/* 4. Center Idle State Icon matching SearchPage.qml lines 1230-1250 */}
+          {!state.isSearching && state.searchResults.length === 0 && !state.searchQuery.trim() && (
+            <div className="pt-16 pb-20 flex flex-col items-center justify-center space-y-3">
+              <div className="w-16 h-16 rounded-full bg-[#313338] border border-[#2B2D31] flex items-center justify-center shadow-lg">
+                <FluxIcon name="search" size={28} color="#5865F2" />
+              </div>
             </div>
+          )}
 
-            {state.isSearching ? (
-              /* Shimmer Skeletons */
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
-                {[...Array(12)].map((_, i) => (
-                  <div key={i} className="aspect-[1/1.5] rounded-xl bg-[#313338] animate-shimmer" />
-                ))}
+          {/* 5. Search Results Header & Grid */}
+          {(state.isSearching || state.searchResults.length > 0) && (
+            <div className="space-y-4 pt-4">
+              <div className="flex items-center justify-between border-b border-[#2B2D31] pb-2">
+                <h2 className="text-sm font-bold text-white tracking-wide">
+                  {state.isSearching
+                    ? `Searching for "${state.searchQuery}"...`
+                    : `${state.searchResults.length} results found for "${state.searchQuery}"`}
+                </h2>
               </div>
-            ) : state.searchResults.length === 0 ? (
-              <div className="py-20 text-center space-y-2">
-                <p className="text-sm text-[#949BA4]">
-                  {state.searchQuery ? 'No matching results found.' : 'Type above to search.'}
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
-                {state.searchResults.map((item, idx) => (
-                  <SearchResultCard
-                    key={idx}
-                    item={item}
-                    onSelectFolder={handleSelectFolder}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+
+              {state.isSearching ? (
+                /* Shimmer Skeletons */
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
+                  {[...Array(12)].map((_, i) => (
+                    <div key={i} className="aspect-[1/1.5] rounded-xl bg-[#313338] animate-shimmer" />
+                  ))}
+                </div>
+              ) : state.searchResults.length === 0 ? (
+                <div className="py-20 text-center space-y-2">
+                  <p className="text-sm text-[#949BA4]">
+                    No matching results found for "{state.searchQuery}".
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
+                  {state.searchResults.map((item, idx) => (
+                    <SearchResultCard
+                      key={idx}
+                      item={item}
+                      onSelectFolder={handleSelectFolder}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         /* =========================================================================
@@ -407,9 +434,6 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
           )}
         </div>
       )}
-
-      {/* Category Multi-Select Modal */}
-      {filterModalOpen && <CategoryFilterModal onClose={() => setFilterModalOpen(false)} />}
     </div>
   );
 };
