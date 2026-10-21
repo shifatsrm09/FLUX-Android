@@ -44,6 +44,7 @@ export interface HistoryItem {
   isFolder?: boolean;
   embedUrl?: string;
   trailerUrl?: string;
+  sources?: VideoSource[];
 }
 
 export interface BookmarkItem {
@@ -70,6 +71,11 @@ export interface DownloadItem {
   status: 'queued' | 'downloading' | 'completed' | 'error';
   error?: string;
   startedAt: number;
+  localUri?: string;
+  posterUrl?: string;
+  group?: string;
+  folderPath?: string;
+  nativeDownloadId?: number;
 }
 
 export interface AppSettings {
@@ -82,6 +88,7 @@ export interface AppSettings {
   customProxyUrl: string;
   volume: number; // 0..100
   muted: boolean;
+  downloadLocation?: 'downloads' | 'movies';
 }
 
 export interface TelepartyMessage {

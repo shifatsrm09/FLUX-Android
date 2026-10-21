@@ -5,7 +5,7 @@ import { CategoryFilterSection } from '../components/CategoryFilterSection';
 import { FluxIcon } from '../components/FluxIcon';
 import { TOP_PICKS } from '../data/topPicks';
 import { executeSearch, fetchTrending, fetchFolderItems, fetchCategoryItems } from '../services/searchService';
-import type { SearchResult } from '../types';
+import type { SearchResult, HistoryItem } from '../types';
 
 interface SearchPageProps {
   isSearchActiveTab?: boolean;
@@ -20,6 +20,11 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
     setIsSearching,
     setTrending,
     removeFromHistory,
+    restoreHistory,
+    setPlayQueue,
+    setSearchError,
+    setBrowsingFolder,
+    setFolderItems,
   } = useFlux();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -29,9 +34,13 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
 
   const [categoriesExpanded, setCategoriesExpanded] = useState(true);
   const [showAllTrending, setShowAllTrending] = useState(false);
-  const [browsingFolder, setBrowsingFolder] = useState<SearchResult | null>(null);
-  const [folderItems, setFolderItems] = useState<SearchResult[]>([]);
+  const browsingFolder = state.browsingFolder;
+  const folderItems = state.folderItems;
   const [isFolderLoading, setIsFolderLoading] = useState(false);
+  const [historySort, setHistorySort] = useState<'recent' | 'progress' | 'title'>('recent');
+  const [historySortOpen, setHistorySortOpen] = useState(false);
+  const [removedHistory, setRemovedHistory] = useState<HistoryItem | null>(null);
+  const searchRequestRef = useRef(0);
 
   // Focus search input when navigating to Search tab
   useEffect(() => {
@@ -42,9 +51,21 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
 
   // Load trending media on mount or when server changes
   useEffect(() => {
+    const cacheKey = `flux_trending_${state.activeServer}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as { savedAt: number; data: SearchResult[] };
+        if (Date.now() - parsed.savedAt < 10 * 60 * 1000) {
+          setTrending(parsed.data);
+          return;
+        }
+      } catch { /* refresh below */ }
+    }
     fetchTrending(state.activeServer).then((data) => {
       setTrending(data);
-    });
+      localStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), data }));
+    }).catch(() => {});
   }, [state.activeServer]);
 
   const loadCategoryResults = () => {
@@ -58,14 +79,15 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
     ).then((items) => {
       setSearchResults(items);
       setIsSearching(false);
-    }).catch(() => {
-      setIsSearching(false);
+    }).catch((error: Error) => {
+      setSearchError(error.message || 'The server could not be reached.');
     });
   };
 
   // Debounced Search Execution
   useEffect(() => {
     const q = state.searchQuery.trim();
+    const requestId = ++searchRequestRef.current;
     if (!q) {
       if (isSearchMode) {
         loadCategoryResults();
@@ -85,10 +107,12 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
         state.settings.proxyMode,
         state.settings.customProxyUrl
       ).then((results) => {
+        if (requestId !== searchRequestRef.current) return;
         setSearchResults(results);
         setIsSearching(false);
-      }).catch(() => {
-        setIsSearching(false);
+      }).catch((error: Error) => {
+        if (requestId !== searchRequestRef.current) return;
+        setSearchError(error.message || 'The server could not be reached.');
       });
     }, 280);
 
@@ -104,8 +128,14 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
       state.settings.proxyMode,
       state.settings.customProxyUrl
     );
+    setPlayQueue(items);
     setFolderItems(items);
     setIsFolderLoading(false);
+  };
+
+  const handleBackToSearchResults = () => {
+    setBrowsingFolder(null);
+    setPlayQueue([]);
   };
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
@@ -124,8 +154,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
       ).then((results) => {
         setSearchResults(results);
         setIsSearching(false);
-      }).catch(() => {
-        setIsSearching(false);
+      }).catch((error: Error) => {
+        setSearchError(error.message || 'The server could not be reached.');
       });
     } else {
       loadCategoryResults();
@@ -153,7 +183,13 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
   }
 
   const isSearchMode = isSearchActiveTab || state.searchQuery.trim().length > 0;
-  const continueWatching = state.history.filter((h) => !h.isFolder && h.timestampMs > 1000);
+  const continueWatching = state.history
+    .filter((h) => !h.isFolder && h.timestampMs > 1000)
+    .sort((a, b) => historySort === 'progress'
+      ? b.progressFraction - a.progressFraction
+      : historySort === 'title'
+        ? a.title.localeCompare(b.title)
+        : b.updatedAt - a.updatedAt);
   const trendingList = state.trending || [];
 
   return (
@@ -166,7 +202,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
           {/* Breadcrumb Header */}
           <div className="flex items-center space-x-3 text-sm text-[#949BA4]">
             <button
-              onClick={() => setBrowsingFolder(null)}
+              onClick={handleBackToSearchResults}
               className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors cursor-pointer"
             >
               <FluxIcon name="back" size={16} color="#FFFFFF" />
@@ -254,9 +290,9 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
 
           {/* 2. Compact Search Input Bar + Blue "Search" Button Centered matching QML lines 1117-1210 */}
           <form onSubmit={handleSearchSubmit} className="flex justify-center">
-            <div className="flex items-center space-x-2.5 w-full max-w-lg">
+            <div className="flex items-center space-x-2.5 w-full max-w-2xl">
               {/* Input container */}
-              <div className="relative grow h-11 rounded-full bg-[#313338] border border-[#2B2D31] focus-within:border-[#5865F2] focus-within:ring-1 focus-within:ring-[#5865F2] shadow-md flex items-center transition-all">
+              <div className="relative grow h-13 rounded-2xl bg-[#313338] border border-[#2B2D31] focus-within:border-[#5865F2] focus-within:ring-1 focus-within:ring-[#5865F2] shadow-md flex items-center transition-all">
                 <div className="absolute left-4 pointer-events-none">
                   <FluxIcon name="search" size={18} color="#80848E" />
                 </div>
@@ -266,7 +302,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                   value={state.searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search movies, shows, episodes..."
-                  className="w-full pl-11 pr-10 h-full bg-transparent text-[13px] text-white placeholder-[#80848E] focus:outline-none"
+                  className="w-full pl-12 pr-10 h-full bg-transparent text-sm text-white placeholder-[#80848E] focus:outline-none"
                 />
                 {state.searchQuery && (
                   <button
@@ -285,7 +321,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
               {/* Blue "Search" Pill Button matching FluxButton text="Search" implicitHeight: 44 */}
               <button
                 type="submit"
-                className="h-11 px-6 rounded-full bg-[#5865F2] hover:bg-[#4752C4] active:bg-[#3C45A5] text-white text-xs font-bold tracking-wide transition-all cursor-pointer shadow-lg shadow-[#5865F2]/25 shrink-0"
+                className="h-13 px-7 rounded-2xl bg-[#5865F2] hover:bg-[#4752C4] active:bg-[#3C45A5] text-white text-sm font-bold tracking-wide transition-all cursor-pointer shadow-lg shadow-[#5865F2]/25 shrink-0"
               >
                 Search
               </button>
@@ -317,7 +353,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
           )}
 
           {/* 5. Search Results Header & Grid */}
-          {(state.isSearching || state.searchResults.length > 0) && (
+          {(state.isSearching || state.searchResults.length > 0 || state.errorMessage) && (
             <div className="space-y-4 pt-4">
               <div className="flex items-center justify-between border-b border-[#2B2D31] pb-2">
                 <h2 className="text-sm font-bold text-white tracking-wide">
@@ -325,6 +361,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                     ? state.searchQuery.trim()
                       ? `Searching for "${state.searchQuery}"...`
                       : 'Loading category items...'
+                    : state.errorMessage
+                    ? 'Search unavailable'
                     : state.searchQuery.trim()
                     ? `${state.searchResults.length} results found for "${state.searchQuery}"`
                     : `${state.searchResults.length} items in category`}
@@ -337,6 +375,12 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                   {[...Array(12)].map((_, i) => (
                     <div key={i} className="aspect-[1/1.5] rounded-xl bg-[#313338] animate-shimmer" />
                   ))}
+                </div>
+              ) : state.errorMessage ? (
+                <div className="py-12 text-center space-y-3 rounded-xl bg-[#F0B232]/10 border border-[#F0B232]/25">
+                  <p className="text-sm font-semibold text-[#F0B232]">{state.errorMessage}</p>
+                  <p className="text-xs text-[#949BA4]">Last successful search: {state.lastSuccessfulSearchAt ? new Date(state.lastSuccessfulSearchAt).toLocaleTimeString() : 'none yet'}</p>
+                  <button onClick={() => handleSearchSubmit()} className="px-4 py-2 rounded-full bg-[#5865F2] text-xs font-bold text-white">Retry</button>
                 </div>
               ) : state.searchResults.length === 0 ? (
                 <div className="py-20 text-center space-y-2">
@@ -383,6 +427,33 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
 
               {continueWatching.length > 0 && (
                 <div className="flex items-center space-x-1.5">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setHistorySortOpen((open) => !open)}
+                      aria-haspopup="menu"
+                      aria-expanded={historySortOpen}
+                      className="h-7 min-w-[76px] px-2.5 rounded-full bg-[#313338] hover:bg-[#383A40] border border-[#2B2D31] text-[11px] font-semibold text-[#DBDEE1] flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <span>{historySort === 'recent' ? 'Recent' : historySort === 'progress' ? 'Progress' : 'Title'}</span>
+                      <span className={`text-[#949BA4] transition-transform ${historySortOpen ? 'rotate-180' : ''}`}>⌄</span>
+                    </button>
+                    {historySortOpen && (
+                      <div role="menu" className="absolute right-0 top-9 z-30 w-32 overflow-hidden rounded-xl bg-[#2B2D31] border border-[#4E5058] shadow-2xl p-1 animate-fadeIn">
+                        {(['recent', 'progress', 'title'] as const).map((option) => (
+                          <button
+                            key={option}
+                            role="menuitemradio"
+                            aria-checked={historySort === option}
+                            onClick={() => { setHistorySort(option); setHistorySortOpen(false); }}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-xs font-semibold transition-colors ${historySort === option ? 'bg-[#5865F2] text-white' : 'text-[#DBDEE1] hover:bg-white/10'}`}
+                          >
+                            {option === 'recent' ? 'Recently watched' : option === 'progress' ? 'Most watched' : 'Title A–Z'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => scrollRow(continueScrollRef, 'left')}
                     className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#313338] hover:bg-[#383A40] border border-[#2B2D31] flex items-center justify-center text-white transition-colors cursor-pointer"
@@ -422,12 +493,16 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                         rawHref: item.url,
                         libraryName: 'Continue',
                         group: 'Watching',
-                        posterUrl: item.posterUrl
+                        posterUrl: item.posterUrl,
+                        embedUrl: item.embedUrl, trailerUrl: item.trailerUrl, sources: item.sources
                       }}
                       progress={item.progressFraction}
                       extraInfo={watchedTimeLabel(item.timestampMs)}
                       showRemove={true}
-                      onRemove={() => removeFromHistory(item.url)}
+                      onRemove={() => {
+                        removeFromHistory(item.url);
+                        setRemovedHistory(item);
+                      }}
                     />
                   </div>
                 ))}
@@ -529,7 +604,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                   Trending Right now
                 </h2>
                 <div className="h-4 sm:h-5 px-1.5 sm:px-2 rounded-full bg-[#5865F2]/15 border border-[#5865F2]/50 flex items-center justify-center shrink-0">
-                  <span className="text-[9px] sm:text-[10px] font-bold text-[#5865F2]">ICC FTP</span>
+                  <span className="text-[9px] sm:text-[10px] font-bold text-[#5865F2]">{state.activeServer === 2 ? 'ICC FTP' : 'Dhaka Flix'}</span>
                 </div>
               </div>
 
@@ -587,7 +662,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                     <SearchResultCard
                       key={idx}
                       item={item}
-                      libraryName="ICC FTP"
+                      libraryName={state.activeServer === 2 ? 'ICC FTP' : 'Dhaka Flix'}
                       onSelectFolder={handleSelectFolder}
                     />
                   ))}
@@ -620,7 +695,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
                   >
                     <SearchResultCard
                       item={item}
-                      libraryName="ICC FTP"
+                      libraryName={state.activeServer === 2 ? 'ICC FTP' : 'Dhaka Flix'}
                       onSelectFolder={handleSelectFolder}
                     />
                   </div>
@@ -628,6 +703,13 @@ export const SearchPage: React.FC<SearchPageProps> = ({ isSearchActiveTab = fals
               </div>
             )}
           </section>
+        </div>
+      )}
+      {removedHistory && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-xl bg-[#2B2D31] border border-[#4E5058] px-4 py-3 shadow-2xl text-xs">
+          <span className="text-white">Removed from Continue Watching</span>
+          <button onClick={() => { restoreHistory(removedHistory); setRemovedHistory(null); }} className="font-bold text-[#8EA1FF]">Undo</button>
+          <button onClick={() => setRemovedHistory(null)} aria-label="Dismiss" className="text-[#949BA4]">×</button>
         </div>
       )}
     </div>

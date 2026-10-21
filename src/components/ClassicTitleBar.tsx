@@ -39,15 +39,16 @@ export const ClassicTitleBar: React.FC<ClassicTitleBarProps> = ({
       </button>
 
       {/* Middle: FLUX Text Centered */}
-      <div
+      <button
         onClick={onHomeClick}
         className="flex items-center justify-center cursor-pointer select-none group"
         title="FLUX Home"
+        aria-label="Go to FLUX Home"
       >
         <span className="text-2xl font-black tracking-[4px] text-white group-hover:text-[#5865F2] transition-colors leading-none">
           FLUX
         </span>
-      </div>
+      </button>
 
       {/* Right: Only Search Icon */}
       <button

@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.hardware.SensorManager;
@@ -106,6 +107,8 @@ public class VlcPlayerActivity extends AppCompatActivity {
     private boolean mIsMuted = false;
     private int mLastUnmutedVolume = 100;
     private boolean mIsFullscreen = true;
+    private float mTouchDownX;
+    private float mTouchDownY;
 
     private String mCurrentUrl;
     private String mTitle;
@@ -147,6 +150,7 @@ public class VlcPlayerActivity extends AppCompatActivity {
         setupLibVLC();
         setupListeners();
         setupGestureDetector();
+        applyResponsivePlayerLayout();
 
         startPlayback(mCurrentUrl, mInitialPositionMs);
     }
@@ -511,10 +515,73 @@ public class VlcPlayerActivity extends AppCompatActivity {
             mPopupTracks.setVisibility(View.GONE);
             scheduleHideControls();
         } else {
+            applyResponsivePlayerLayout();
             populateTracksMenu();
             mPopupTracks.setVisibility(View.VISIBLE);
             cancelHideControls();
         }
+    }
+
+    /** Keep controls usable on narrow portrait screens and wide landscape screens. */
+    private void applyResponsivePlayerLayout() {
+        if (mPopupTracks == null) return;
+
+        boolean portrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int margin = dpToPx(portrait ? 12 : 24);
+
+        FrameLayout.LayoutParams popupParams = (FrameLayout.LayoutParams) mPopupTracks.getLayoutParams();
+        popupParams.width = portrait ? screenWidth - (margin * 2) : Math.min(dpToPx(460), screenWidth - (margin * 2));
+        popupParams.gravity = Gravity.BOTTOM | Gravity.END;
+        popupParams.setMargins(margin, 0, margin, dpToPx(portrait ? 92 : 110));
+        mPopupTracks.setLayoutParams(popupParams);
+
+        View columnsView = mPopupTracks.getChildAt(0);
+        if (columnsView instanceof LinearLayout) {
+            LinearLayout columns = (LinearLayout) columnsView;
+            View audioColumn = columns.getChildAt(0);
+            View divider = columns.getChildAt(1);
+            View subtitleColumn = columns.getChildAt(2);
+
+            if (portrait) {
+                columns.setOrientation(LinearLayout.VERTICAL);
+                columns.getLayoutParams().height = dpToPx(252);
+                divider.setVisibility(View.GONE);
+                for (View column : new View[]{audioColumn, subtitleColumn}) {
+                    LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) column.getLayoutParams();
+                    lp.width = LinearLayout.LayoutParams.MATCH_PARENT;
+                    lp.height = dpToPx(116);
+                    lp.weight = 0;
+                    column.setLayoutParams(lp);
+                }
+            } else {
+                columns.setOrientation(LinearLayout.HORIZONTAL);
+                columns.getLayoutParams().height = dpToPx(220);
+                divider.setVisibility(View.VISIBLE);
+                LinearLayout.LayoutParams audioLp = (LinearLayout.LayoutParams) audioColumn.getLayoutParams();
+                audioLp.width = 0;
+                audioLp.height = LinearLayout.LayoutParams.MATCH_PARENT;
+                audioLp.weight = 1;
+                audioColumn.setLayoutParams(audioLp);
+                LinearLayout.LayoutParams subtitleLp = (LinearLayout.LayoutParams) subtitleColumn.getLayoutParams();
+                subtitleLp.width = 0;
+                subtitleLp.height = LinearLayout.LayoutParams.MATCH_PARENT;
+                subtitleLp.weight = 1;
+                subtitleColumn.setLayoutParams(subtitleLp);
+            }
+        }
+
+        LinearLayout bottomBar = findViewById(R.id.bottom_bar);
+        if (bottomBar != null) {
+            int side = dpToPx(portrait ? 12 : 28);
+            bottomBar.setPadding(side, dpToPx(8), side, dpToPx(portrait ? 12 : 20));
+        }
+
+        // Keep the most useful controls visible in portrait; secondary controls remain available in landscape.
+        if (mVolumeSeekbar != null) mVolumeSeekbar.setVisibility(portrait ? View.GONE : View.VISIBLE);
+        if (mBtnNextEpisode != null) mBtnNextEpisode.setVisibility(portrait ? View.GONE : View.VISIBLE);
+        if (mBtnEpisodes != null) mBtnEpisodes.setVisibility(portrait ? View.GONE : View.VISIBLE);
+        if (mBtnAspect != null) mBtnAspect.setVisibility(portrait ? View.GONE : View.VISIBLE);
     }
 
     private void populateTracksMenu() {
@@ -673,12 +740,60 @@ public class VlcPlayerActivity extends AppCompatActivity {
                 }
                 return true;
             }
+
+            @Override
+            public boolean onFling(MotionEvent start, MotionEvent end, float velocityX, float velocityY) {
+                float distanceY = end.getY() - start.getY();
+                if (Math.abs(distanceY) < dpToPx(48) || Math.abs(distanceY) < Math.abs(end.getX() - start.getX())) {
+                    return false;
+                }
+
+                float width = getResources().getDisplayMetrics().widthPixels;
+                boolean rightSide = start.getX() >= width * 0.55f;
+                boolean leftSide = start.getX() <= width * 0.45f;
+                boolean increase = distanceY < 0;
+
+                if (rightSide) {
+                    adjustGestureVolume(increase ? 1 : -1);
+                    return true;
+                }
+                if (leftSide) {
+                    adjustGestureBrightness(increase ? 1 : -1);
+                    return true;
+                }
+                return false;
+            }
         });
 
         mTouchOverlay.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                mTouchDownX = event.getX();
+                mTouchDownY = event.getY();
+            }
             gestureDetector.onTouchEvent(event);
             return true;
         });
+    }
+
+    private void adjustGestureVolume(int direction) {
+        if (mMediaPlayer == null) return;
+        int current = mMediaPlayer.getVolume();
+        int next = Math.max(0, Math.min(200, current + (direction * 20)));
+        mMediaPlayer.setVolume(next);
+        mVolumeSeekbar.setProgress(next);
+        mIsMuted = next == 0;
+        mBtnVolumeMute.setImageResource(mIsMuted ? R.drawable.ic_player_volume_mute : R.drawable.ic_player_volume_high);
+        showOsd((direction > 0 ? "Volume up · " : "Volume down · ") + next + "%");
+    }
+
+    private void adjustGestureBrightness(int direction) {
+        WindowManager.LayoutParams params = getWindow().getAttributes();
+        float current = params.screenBrightness;
+        if (current < 0f) current = 0.5f;
+        float next = Math.max(0.05f, Math.min(1f, current + (direction * 0.08f)));
+        params.screenBrightness = next;
+        getWindow().setAttributes(params);
+        showOsd((direction > 0 ? "Brightness up · " : "Brightness down · ") + Math.round(next * 100) + "%");
     }
 
     private void updateProgressUI(long currentMs, long totalMs) {

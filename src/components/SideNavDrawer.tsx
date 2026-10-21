@@ -7,6 +7,7 @@ import {
   Folder,
   Settings,
   Download,
+  HelpCircle,
   X
 } from 'lucide-react';
 
@@ -18,6 +19,7 @@ interface SideNavDrawerProps {
   onOpenTeleparty: () => void;
   onOpenSettings: () => void;
   onOpenDownloads: () => void;
+  onOpenHowToUse: () => void;
 }
 
 export const SideNavDrawer: React.FC<SideNavDrawerProps> = ({
@@ -27,13 +29,15 @@ export const SideNavDrawer: React.FC<SideNavDrawerProps> = ({
   onSectionChange,
   onOpenTeleparty,
   onOpenSettings,
-  onOpenDownloads
+  onOpenDownloads,
+  onOpenHowToUse
 }) => {
   const { state, setActiveServer } = useFlux();
 
   if (!isOpen) return null;
 
   const activeDownloadsCount = state.downloads.filter((d) => d.status === 'downloading').length;
+  const activeDownloads = state.downloads.filter((d) => d.status === 'downloading' || d.status === 'queued');
   const inTeleparty = state.teleparty.state === 'joined';
 
   const navItems = [
@@ -98,6 +102,15 @@ export const SideNavDrawer: React.FC<SideNavDrawerProps> = ({
       },
       badge: activeDownloadsCount > 0 ? String(activeDownloadsCount) : undefined,
       badgeColor: 'bg-[#5865F2]'
+    },
+    {
+      id: 'how-to-use',
+      label: 'How FLUX works',
+      icon: HelpCircle,
+      action: () => {
+        onClose();
+        onOpenHowToUse();
+      }
     }
   ];
 
@@ -177,6 +190,23 @@ export const SideNavDrawer: React.FC<SideNavDrawerProps> = ({
             );
           })}
         </div>
+
+        {/* Standalone download status pill above the server selector. */}
+        {activeDownloads.length > 0 && (
+          <div className="px-3 pb-3">
+            <button
+              onClick={onOpenDownloads}
+              className="w-full rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/35 px-3 py-2 text-left hover:bg-[#5865F2]/25 transition-colors"
+            >
+              <span className="block text-[10px] font-bold text-[#8EA1FF] uppercase tracking-wide">
+                Downloading · {activeDownloads.length}
+              </span>
+              <span className="mt-1 block text-[11px] text-white line-clamp-2">
+                {activeDownloads.map((d) => `${d.title} (${d.progress}%)`).join(' · ')}
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Footer: Quick Server Indicator */}
         <div className="p-4 border-t border-[#2B2D31] bg-[#111215] flex flex-col space-y-2">

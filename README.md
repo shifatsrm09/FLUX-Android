@@ -67,6 +67,13 @@ npm run build:apk
 ```
 The output APK is automatically placed in the project root as `FLUX-Android.apk`.
 
+### One-Click Emulator Testing
+Double-click `run.bat` or run:
+```powershell
+.\run.bat
+```
+*(Starts the Android emulator, optimizes performance settings, installs `FLUX-Android.apk`, and opens the app automatically).*
+
 ### Opening in Android Studio
 ```powershell
 npm run cap:open

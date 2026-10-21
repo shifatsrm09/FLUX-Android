@@ -1,28 +1,56 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useFlux } from './stores/useFluxStore';
 import { ClassicTitleBar } from './components/ClassicTitleBar';
 import { SideNavDrawer } from './components/SideNavDrawer';
 import { SearchPage } from './pages/SearchPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { BookmarksView } from './pages/BookmarksView';
-import { PlayerView } from './components/PlayerView';
-import { SettingsModal } from './components/SettingsModal';
-import { DownloadsPanel } from './components/DownloadsPanel';
-import { TelepartyModal } from './components/TelepartyModal';
+import { FirstLaunchModal } from './components/FirstLaunchModal';
+import { DownloadLocationModal } from './components/DownloadLocationModal';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 
+const PlayerView = React.lazy(() => import('./components/PlayerView').then((m) => ({ default: m.PlayerView })));
+const SettingsModal = React.lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })));
+const DownloadsPanel = React.lazy(() => import('./components/DownloadsPanel').then((m) => ({ default: m.DownloadsPanel })));
+const TelepartyModal = React.lazy(() => import('./components/TelepartyModal').then((m) => ({ default: m.TelepartyModal })));
+
 export const App: React.FC = () => {
-  const { state, setPage } = useFlux();
+  const { state, setPage, setSearchQuery, setSearchResults, setBrowsingFolder, setPlayQueue } = useFlux();
   const [section, setSection] = useState<'home' | 'search' | 'bookmarks' | 'library'>('home');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [telepartyOpen, setTelepartyOpen] = useState(false);
+  const [howToUseOpen, setHowToUseOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(() => localStorage.getItem('flux_onboarding_seen_v1') !== '1');
+
+  const closeWelcome = () => {
+    localStorage.setItem('flux_onboarding_seen_v1', '1');
+    setWelcomeOpen(false);
+  };
 
   const isPlayerActive = state.currentPage === 'player';
+
+  const handleHomeClick = () => {
+    setSection('home');
+    setDrawerOpen(false);
+    setSettingsOpen(false);
+    setDownloadsOpen(false);
+    setTelepartyOpen(false);
+    setHowToUseOpen(false);
+    // Home is the dashboard, not the search-results view. Clear the query so
+    // SearchPage cannot remain in search mode after changing sections.
+    setSearchQuery('');
+    setSearchResults([]);
+    setBrowsingFolder(null);
+    setPlayQueue([]);
+    if (state.currentPage === 'player') {
+      setPage('search');
+    }
+  };
 
   const handleSectionChange = (sec: 'home' | 'search' | 'bookmarks' | 'library') => {
     setSection(sec);
@@ -36,6 +64,10 @@ export const App: React.FC = () => {
     if (!Capacitor.isNativePlatform()) return;
 
     const backListener = CapApp.addListener('backButton', () => {
+      if (welcomeOpen) {
+        closeWelcome();
+        return;
+      }
       if (drawerOpen) {
         setDrawerOpen(false);
         return;
@@ -66,7 +98,7 @@ export const App: React.FC = () => {
     return () => {
       backListener.then((l) => l.remove());
     };
-  }, [isPlayerActive, drawerOpen, settingsOpen, downloadsOpen, telepartyOpen, section]);
+  }, [isPlayerActive, drawerOpen, settingsOpen, downloadsOpen, telepartyOpen, section, welcomeOpen]);
 
   // Status Bar & Orientation Controller
   useEffect(() => {
@@ -110,7 +142,7 @@ export const App: React.FC = () => {
         onOpenDrawer={() => setDrawerOpen(true)}
         onSearchClick={() => setSection(section === 'search' ? 'home' : 'search')}
         isSearchActive={section === 'search'}
-        onHomeClick={() => setSection('home')}
+        onHomeClick={handleHomeClick}
         overlayMode={isPlayerActive}
       />
 
@@ -123,6 +155,7 @@ export const App: React.FC = () => {
         onOpenTeleparty={() => setTelepartyOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenDownloads={() => setDownloadsOpen(true)}
+        onOpenHowToUse={() => setHowToUseOpen(true)}
       />
 
       {/* Main Content Stage */}
@@ -133,7 +166,7 @@ export const App: React.FC = () => {
         }}
       >
         {isPlayerActive ? (
-          <PlayerView />
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-black flex items-center justify-center text-[#949BA4]">Starting player…</div>}><PlayerView /></Suspense>
         ) : section === 'library' ? (
           <LibraryPage />
         ) : section === 'bookmarks' ? (
@@ -146,13 +179,16 @@ export const App: React.FC = () => {
 
 
       {/* Settings Modal */}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <Suspense fallback={null}><SettingsModal onClose={() => setSettingsOpen(false)} /></Suspense>}
 
       {/* Downloads Panel */}
-      {downloadsOpen && <DownloadsPanel onClose={() => setDownloadsOpen(false)} />}
+      {downloadsOpen && <Suspense fallback={null}><DownloadsPanel onClose={() => setDownloadsOpen(false)} /></Suspense>}
 
       {/* Teleparty Modal */}
-      {telepartyOpen && <TelepartyModal onClose={() => setTelepartyOpen(false)} />}
+      {telepartyOpen && <Suspense fallback={null}><TelepartyModal onClose={() => setTelepartyOpen(false)} /></Suspense>}
+      {howToUseOpen && <FirstLaunchModal onClose={() => setHowToUseOpen(false)} />}
+      {welcomeOpen && !isPlayerActive && <FirstLaunchModal onClose={closeWelcome} />}
+      <DownloadLocationModal />
     </div>
   );
 };

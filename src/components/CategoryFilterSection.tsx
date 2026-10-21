@@ -191,9 +191,9 @@ export const CategoryFilterSection: React.FC<CategoryFilterSectionProps> = ({
 
       {/* Category Columns matching CategoryFilterSection.qml lines 337-402 */}
       {isExpanded && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-5 pt-1 animate-fadeIn">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1 animate-fadeIn">
           {groups.map((group, gIdx) => (
-            <div key={gIdx} className="flex flex-col space-y-2">
+            <div key={gIdx} className="flex flex-col space-y-2.5 rounded-xl bg-[#2B2D31]/45 border border-[#2B2D31] p-3">
               {/* Column Heading with 3px blue vertical accent bar */}
               <div className="h-[30px] flex items-center space-x-2.5">
                 <div className="w-[3px] h-3.5 rounded-[1.5px] bg-[#5865F2]" />
@@ -203,7 +203,7 @@ export const CategoryFilterSection: React.FC<CategoryFilterSectionProps> = ({
               </div>
 
               {/* Items in this group */}
-              <div className="flex flex-col space-y-2">
+              <div className="grid grid-cols-1 gap-1.5">
                 {group.items.map((item) => {
                   const isSelected =
                     state.isAllSelected || state.selectedCategoryIds.includes(item.id);
@@ -212,8 +212,8 @@ export const CategoryFilterSection: React.FC<CategoryFilterSectionProps> = ({
                     <div
                       key={item.id}
                       onClick={() => handleToggleItem(item.id)}
-                      className={`h-[38px] px-3.5 rounded-[10px] bg-[#313338] hover:bg-[#383A40] border transition-colors cursor-pointer flex items-center justify-between ${
-                        isSelected ? 'border-[#2B2D31]' : 'border-[#2B2D31] opacity-70'
+                      className={`min-h-[40px] px-3 rounded-lg bg-[#313338] hover:bg-[#383A40] border transition-colors cursor-pointer flex items-center justify-between ${
+                        isSelected ? 'border-[#4E5058] shadow-sm' : 'border-[#2B2D31] opacity-70'
                       } hover:border-[#4E5058]`}
                     >
                       <span

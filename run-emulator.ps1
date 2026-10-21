@@ -10,7 +10,13 @@ if (Test-Path "M:\Android\avd") {
     $env:ANDROID_AVD_HOME = "M:\Android\avd"
 }
 
-$SdkDir = "C:\Users\shifa\AppData\Local\Android\Sdk"
+$SdkDir = if ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) {
+    $env:ANDROID_HOME
+} elseif (Test-Path "$env:LOCALAPPDATA\Android\Sdk") {
+    "$env:LOCALAPPDATA\Android\Sdk"
+} else {
+    "C:\Users\shifa\AppData\Local\Android\Sdk"
+}
 $EmulatorExe = "$SdkDir\emulator\emulator.exe"
 $AdbExe = "$SdkDir\platform-tools\adb.exe"
 $ApkPath = "$PSScriptRoot\FLUX-Android.apk"
@@ -18,7 +24,7 @@ $ApkPath = "$PSScriptRoot\FLUX-Android.apk"
 if (-not (Test-Path $ApkPath)) {
     Write-Host "FLUX-Android.apk not found. Building APK first..." -ForegroundColor Yellow
     Set-Location $PSScriptRoot
-    npm run build:apk
+    npm.cmd run build:apk
 }
 
 Write-Host "Checking for running Android devices/emulators..." -ForegroundColor Cyan

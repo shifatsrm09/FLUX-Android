@@ -2,6 +2,13 @@ import type { SearchResult, MediaRoot, VideoSource } from '../types';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import mediaLibraryRaw from '../data/media_library.json';
 
+const IMAGE_EXTENSIONS = /\.(?:jpe?g|png|gif|webp|bmp|svg)$/i;
+const VIDEO_EXTENSIONS = /\.(?:mkv|mp4|avi|mov|webm|ts|m4v|m3u8)$/i;
+
+function isSelectableMedia(name: string, isFolder = false): boolean {
+  return isFolder || !IMAGE_EXTENSIONS.test(name) && (VIDEO_EXTENSIONS.test(name) || !name.includes('.'));
+}
+
 // Curated lookup for instant IMDb ID resolution
 export const IMDB_MAP: Record<string, string> = {
   'spider-man': 'tt0145487',
@@ -464,7 +471,7 @@ export async function executeSearch(
       );
 
       if (Array.isArray(data) && data.length > 0) {
-        return data.map((item: any) => {
+        return data.filter((item: any) => isSelectableMedia(String(item.name || ''))).map((item: any) => {
           const id = String(item.id || '');
           const name = String(item.name || '').trim();
           const playerUrl = `http://10.16.100.244/player.php?play=${id}`;
@@ -496,8 +503,8 @@ export async function executeSearch(
       }
     } catch (e) {
       console.warn('ICC search error', e);
+      throw new Error('ICC FTP is unavailable or timed out. Check your network and try again.');
     }
-    return [];
   }
 
   // 2. Live Dhaka Flix search (Server 1)
@@ -529,7 +536,10 @@ export async function executeSearch(
         );
 
         const searchItems = data?.search || [];
-        return searchItems.map((item: any) => {
+        return searchItems.filter((item: any) => {
+          const href = String(item.href || '');
+          return isSelectableMedia(href.split('/').filter(Boolean).pop() || href, href.endsWith('/'));
+        }).map((item: any) => {
           const href = item.href || '';
           const name = href.split('/').filter(Boolean).pop() || href;
           const cleanName = decodeURIComponent(name);
@@ -551,20 +561,23 @@ export async function executeSearch(
             matchScore: 10
           } as SearchResult;
         });
-      } catch {
-        return [];
+      } catch (error) {
+        throw error;
       }
     });
 
     const settled = await Promise.allSettled(livePromises);
-    const results = settled
-      .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled')
+    const successful = settled.filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled');
+    if (successful.length === 0) {
+      throw new Error('Dhaka Flix is unavailable or timed out. Connect to BDIX or try Fast Mirror.');
+    }
+    const results = successful
       .flatMap((r) => r.value);
 
     return results;
   } catch (err) {
     console.warn('Dhaka Flix search error', err);
-    return [];
+    throw err;
   }
 }
 
@@ -581,7 +594,7 @@ export async function fetchCategoryItems(
     try {
       return await executeSearch('2024', 2, selectedCategoryIds, isAllSelected, proxyMode, customProxyUrl);
     } catch {
-      return [];
+      throw new Error('ICC FTP is unavailable or timed out.');
     }
   }
 
@@ -614,7 +627,8 @@ export async function fetchCategoryItems(
       const items = (data?.items || []).filter((item: any) => {
         const decoded = decodeURIComponent(item.href || '');
         const rootDecoded = decodeURIComponent(root.href);
-        return decoded !== rootDecoded && decoded.startsWith(rootDecoded);
+        const name = decoded.split('/').filter(Boolean).pop() || decoded;
+        return decoded !== rootDecoded && decoded.startsWith(rootDecoded) && isSelectableMedia(name, decoded.endsWith('/'));
       });
 
       return items.map((item: any) => {
@@ -639,15 +653,15 @@ export async function fetchCategoryItems(
           matchScore: 9
         } as SearchResult;
       });
-    } catch {
-      return [];
+    } catch (error) {
+      throw error;
     }
   });
 
   const settled = await Promise.allSettled(promises);
-  return settled
-    .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled')
-    .flatMap((r) => r.value);
+  const successful = settled.filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled');
+  if (successful.length === 0) throw new Error('Dhaka Flix is unavailable or timed out.');
+  return successful.flatMap((r) => r.value);
 }
 
 // Fetch real files inside a folder (Dhaka Flix h5ai)
@@ -687,7 +701,8 @@ export async function fetchFolderItems(
     const items = (data?.items || []).filter((h: any) => {
       const decoded = decodeURIComponent(h.href || '');
       const selfDecoded = decodeURIComponent(href);
-      return decoded !== selfDecoded && decoded.startsWith(selfDecoded);
+      const name = decoded.split('/').filter(Boolean).pop() || decoded;
+      return decoded !== selfDecoded && decoded.startsWith(selfDecoded) && isSelectableMedia(name, decoded.endsWith('/'));
     });
 
     if (items.length > 0) {
@@ -716,6 +731,7 @@ export async function fetchFolderItems(
 
         return {
           title: name,
+          parentPath: folder.title,
           formattedSize: isDir ? 'Folder' : `${((item.size || 0) / (1024 * 1024)).toFixed(1)} MB`,
           isFolder: isDir,
           playUrl: sources.playUrl,

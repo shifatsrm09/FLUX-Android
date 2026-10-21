@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Directory, Filesystem } from '@capacitor/filesystem';
 import { FluxSyncplay } from '../services/syncplayService';
+import { FluxDownloads, isNativeDownloadsSupported } from '../services/fluxDownloadService';
 import type {
   SearchResult,
   HistoryItem,
@@ -21,6 +23,7 @@ const STORAGE_KEYS = {
   SELECTED_CATEGORIES_DHAKA: 'flux_sel_cat_dhaka',
   SELECTED_CATEGORIES_ICC: 'flux_sel_cat_icc',
   TOP_PICKS_FIRST: 'flux_top_picks_first',
+  ONBOARDING_SEEN: 'flux_onboarding_seen_v1',
 };
 
 const defaultSettings: AppSettings = {
@@ -33,6 +36,7 @@ const defaultSettings: AppSettings = {
   customProxyUrl: '',
   volume: 100,
   muted: false,
+  downloadLocation: undefined,
 };
 
 // Global reactive state
@@ -67,13 +71,21 @@ const store = {
   isSearching: false,
   statusMessage: '',
   errorMessage: '',
+  lastSearchAt: 0,
+  lastSuccessfulSearchAt: 0,
   trending: [] as SearchResult[],
   isTrendingLoading: false,
   topPicksFirst: loadStored<boolean>(STORAGE_KEYS.TOP_PICKS_FIRST, false),
   history: loadStored<HistoryItem[]>(STORAGE_KEYS.HISTORY, []),
   bookmarks: loadStored<BookmarkItem[]>(STORAGE_KEYS.BOOKMARKS, []),
   downloads: loadStored<DownloadItem[]>(STORAGE_KEYS.DOWNLOADS, []),
+  pendingDownload: null as { url: string; title: string; isPack: boolean; posterUrl?: string; group?: string; parentPath?: string } | null,
   localMedia: loadStored<SearchResult[]>(STORAGE_KEYS.LOCAL_MEDIA, []),
+  // SearchPage is unmounted while the native player is open. Keep the active
+  // folder in the shared store so returning from playback restores context.
+  browsingFolder: null as SearchResult | null,
+  folderItems: [] as SearchResult[],
+  playQueue: [] as SearchResult[],
   currentPlaying: null as {
     url: string;
     title: string;
@@ -123,6 +135,19 @@ export const FluxStore = {
       store.pageBeforePlayer = store.currentPage;
     }
     store.currentPage = page;
+    emitChange();
+  },
+
+  setBrowsingFolder(folder: SearchResult | null) {
+    store.browsingFolder = folder;
+    if (!folder) {
+      store.folderItems = [];
+    }
+    emitChange();
+  },
+
+  setFolderItems(items: SearchResult[]) {
+    store.folderItems = items;
     emitChange();
   },
 
@@ -178,6 +203,16 @@ export const FluxStore = {
   setSearchResults(results: SearchResult[]) {
     store.searchResults = results;
     store.isSearching = false;
+    store.errorMessage = '';
+    store.lastSearchAt = Date.now();
+    store.lastSuccessfulSearchAt = store.lastSearchAt;
+    emitChange();
+  },
+
+  setSearchError(message: string) {
+    store.isSearching = false;
+    store.errorMessage = message;
+    store.lastSearchAt = Date.now();
     emitChange();
   },
 
@@ -236,7 +271,8 @@ export const FluxStore = {
       durationMs: existing ? existing.durationMs : 0,
       progressFraction: existing ? existing.progressFraction : 0,
       updatedAt: Date.now(),
-      posterUrl: existing?.posterUrl
+      posterUrl: existing?.posterUrl,
+      sources
     };
 
     if (existingIdx >= 0) {
@@ -245,6 +281,17 @@ export const FluxStore = {
     store.history.unshift(newEntry);
     saveStored(STORAGE_KEYS.HISTORY, store.history);
 
+    emitChange();
+  },
+
+  setPlayQueue(items: SearchResult[]) {
+    store.playQueue = items.filter((item) => !item.isFolder);
+    emitChange();
+  },
+
+  restoreHistory(item: HistoryItem) {
+    store.history = [item, ...store.history.filter((h) => h.url !== item.url)].slice(0, 100);
+    saveStored(STORAGE_KEYS.HISTORY, store.history);
     emitChange();
   },
 
@@ -288,8 +335,15 @@ export const FluxStore = {
     return store.bookmarks.some((b) => b.url === url);
   },
 
-  addDownload(url: string, title: string, isPack: boolean) {
+  addDownload(url: string, title: string, isPack: boolean, posterUrl?: string, group?: string, parentPath?: string) {
+    if (isNativeDownloadsSupported() && !store.settings.downloadLocation) {
+      store.pendingDownload = { url, title, isPack, posterUrl, group, parentPath };
+      emitChange();
+      return;
+    }
+
     const id = 'dl_' + Math.random().toString(36).substring(2, 9);
+    const folderName = parentPath || (isPack ? title : (/^(.*?)(?:\s+S\d{1,2}|\s+Season\s+\d+)/i.exec(title)?.[1] || ''));
     const newDl: DownloadItem = {
       id,
       url,
@@ -300,64 +354,127 @@ export const FluxStore = {
       totalBytes: isPack ? 1024 * 1024 * 1024 * 5 : 1024 * 1024 * 700,
       speed: 'Calculating...',
       status: 'downloading',
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      posterUrl,
+      group,
+      folderPath: folderName
     };
     store.downloads.unshift(newDl);
     saveStored(STORAGE_KEYS.DOWNLOADS, store.downloads);
     emitChange();
 
-    // Trigger browser native download or simulated download
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = title;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (e) {
-      console.warn('Native download link trigger fallback', e);
-    }
-
-    // Simulate progress completion
-    let curProgress = 0;
-    const interval = setInterval(() => {
-      curProgress += 15;
-      if (curProgress >= 100) {
-        curProgress = 100;
-        clearInterval(interval);
+    if (isNativeDownloadsSupported()) {
+      FluxDownloads.start({
+        url,
+        title,
+        location: store.settings.downloadLocation || 'downloads',
+        folderName
+      }).then(({ downloadId, folderPath }) => {
+        newDl.nativeDownloadId = downloadId;
+        newDl.folderPath = folderPath;
+        saveStored(STORAGE_KEYS.DOWNLOADS, store.downloads);
+        emitChange();
+        const poll = window.setInterval(async () => {
+          try {
+            const status = await FluxDownloads.status({ downloadId });
+            newDl.status = status.status === 'completed' ? 'completed' : status.status === 'failed' ? 'error' : status.status === 'paused' ? 'queued' : status.status;
+            newDl.downloadedBytes = status.downloadedBytes;
+            newDl.totalBytes = status.totalBytes > 0 ? status.totalBytes : newDl.totalBytes;
+            newDl.progress = newDl.totalBytes > 0 ? Math.round((newDl.downloadedBytes / newDl.totalBytes) * 100) : 0;
+            newDl.speed = newDl.status === 'completed' ? 'Finished' : `${newDl.progress}%`;
+            if (status.localUri) newDl.localUri = status.localUri;
+            if (newDl.status === 'completed' || newDl.status === 'error') window.clearInterval(poll);
+            saveStored(STORAGE_KEYS.DOWNLOADS, store.downloads);
+            emitChange();
+          } catch (error) {
+            console.warn('Download status update failed', error);
+          }
+        }, 1000);
+      }).catch((error) => {
+        newDl.status = 'error';
+        newDl.error = error?.message || 'Unable to start download';
+        saveStored(STORAGE_KEYS.DOWNLOADS, store.downloads);
+        emitChange();
+      });
+    } else {
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = title;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
         newDl.status = 'completed';
         newDl.progress = 100;
-        newDl.speed = 'Finished';
-      } else {
-        newDl.progress = curProgress;
-        newDl.downloadedBytes = Math.round((curProgress / 100) * newDl.totalBytes);
-        newDl.speed = '4.2 MB/s';
+        newDl.speed = 'Browser download started';
+        saveStored(STORAGE_KEYS.DOWNLOADS, store.downloads);
+        emitChange();
+      } catch (error: any) {
+        newDl.status = 'error';
+        newDl.error = error?.message || 'Unable to start download';
+        saveStored(STORAGE_KEYS.DOWNLOADS, store.downloads);
+        emitChange();
       }
-      saveStored(STORAGE_KEYS.DOWNLOADS, store.downloads);
-      emitChange();
-    }, 600);
+    }
   },
 
-  addLocalFile(file: File) {
-    const blobUrl = URL.createObjectURL(file);
+  setDownloadLocation(location: 'downloads' | 'movies') {
+    store.settings = { ...store.settings, downloadLocation: location };
+    saveStored(STORAGE_KEYS.SETTINGS, store.settings);
+    const pending = store.pendingDownload;
+    store.pendingDownload = null;
+    emitChange();
+    if (pending) {
+      FluxStore.addDownload(pending.url, pending.title, pending.isPack, pending.posterUrl, pending.group, pending.parentPath);
+    }
+  },
+
+  async addLocalFile(file: File) {
+    let playableUrl = '';
+    let persistentPath = file.name;
+
+    if (Capacitor.isNativePlatform()) {
+      const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      const result = await Filesystem.writeFile({
+        path: `media/${safeName}`,
+        data,
+        directory: Directory.Data,
+        recursive: true
+      });
+      persistentPath = `media/${safeName}`;
+      playableUrl = Capacitor.convertFileSrc(result.uri);
+    } else {
+      playableUrl = URL.createObjectURL(file);
+    }
+
     const item: SearchResult = {
       title: file.name,
       formattedSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
       isFolder: false,
-      playUrl: blobUrl,
-      rawHref: blobUrl,
+      playUrl: playableUrl,
+      rawHref: playableUrl,
       extension: file.name.split('.').pop() || 'mp4',
       libraryName: 'Local Storage',
       group: 'My Videos',
-      localPath: file.name
+      localPath: persistentPath
     };
     store.localMedia.unshift(item);
     saveStored(STORAGE_KEYS.LOCAL_MEDIA, store.localMedia);
     emitChange();
   },
 
-  removeLocalMedia(url: string) {
+  async removeLocalMedia(url: string) {
+    const item = store.localMedia.find((m) => m.playUrl === url);
+    if (item?.localPath && Capacitor.isNativePlatform() && item.localPath.startsWith('media/')) {
+      try { await Filesystem.deleteFile({ path: item.localPath, directory: Directory.Data }); } catch { /* already removed */ }
+    }
     store.localMedia = store.localMedia.filter((m) => m.playUrl !== url);
     saveStored(STORAGE_KEYS.LOCAL_MEDIA, store.localMedia);
     emitChange();

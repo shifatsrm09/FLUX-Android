@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import type { SearchResult } from '../types';
 import { describe, formatMedia } from '../utils/mediaFormatter';
 import { PosterArt } from './PosterArt';
@@ -32,6 +32,9 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
   const [hovered, setHovered] = useState(false);
   const [dlFlash, setDlFlash] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressClick = useRef(false);
 
   const formatted = formatMedia(item.title, item.isFolder, item.formattedSize);
   const meta = describe(item.title, item.isFolder, item.formattedSize);
@@ -71,6 +74,11 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
   const effectiveLibraryName = libraryName || item.libraryName || '';
 
   const handleCardClick = () => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    if (actionMenuOpen) return;
     if (item.isFolder) {
       if (onSelectFolder) onSelectFolder(item);
     } else {
@@ -87,6 +95,23 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
     }
   };
 
+  const startLongPress = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      suppressClick.current = true;
+      setActionMenuOpen(true);
+      setHovered(true);
+    }, 550);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
   const handleBookmarkClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     toggleBookmark(item);
@@ -97,7 +122,7 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
     if (onDownload) {
       onDownload();
     } else {
-      addDownload(item.playUrl, item.title, item.isFolder);
+      addDownload(item.playUrl, item.title, item.isFolder, item.posterUrl, item.group, item.parentPath);
     }
     setDlFlash(true);
     setTimeout(() => setDlFlash(false), 1600);
@@ -112,6 +137,10 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onPointerDown={startLongPress}
+      onPointerUp={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onContextMenu={(e) => { e.preventDefault(); setActionMenuOpen(true); }}
       onClick={handleCardClick}
       className={`relative w-full aspect-[1/1.5] cursor-pointer select-none transition-transform duration-260 ease-out p-[3px] sm:p-[6px] ${
         hovered ? 'z-20' : 'z-0'
@@ -337,6 +366,31 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
           <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#5865F2] z-20" />
         )}
       </div>
+
+      {actionMenuOpen && (
+        <div
+          className="absolute left-1/2 top-1/2 z-40 w-[calc(100%-24px)] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-[#1E1F22]/[.98] border border-[#4E5058] p-2 shadow-2xl backdrop-blur-md"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#80848E]">Quick actions</p>
+          <button
+            onClick={() => { toggleBookmark(item); setActionMenuOpen(false); }}
+            className="w-full rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-white hover:bg-white/10"
+          >
+            {bookmarked ? 'Remove bookmark' : 'Add to bookmark'}
+          </button>
+          {!item.localPath && (
+            <button
+              onClick={() => { addDownload(item.playUrl, item.title, item.isFolder, item.posterUrl, item.group, item.parentPath); setDlFlash(true); setActionMenuOpen(false); }}
+              className="w-full rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-white hover:bg-white/10"
+            >
+              {item.isFolder ? 'Download folder' : 'Download'}
+            </button>
+          )}
+          <button onClick={() => setActionMenuOpen(false)} className="w-full rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-[#949BA4] hover:bg-white/10">Cancel</button>
+        </div>
+      )}
     </div>
   );
 };

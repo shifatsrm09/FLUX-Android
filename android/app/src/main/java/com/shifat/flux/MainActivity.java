@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(FluxVlcPlayerPlugin.class);
         registerPlugin(FluxSyncplayPlugin.class);
+        registerPlugin(FluxDownloadsPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Hardware acceleration and high-performance rendering for 60/120Hz smooth scrolling

@@ -9,7 +9,7 @@ import type { VideoSource } from '../types';
 import { isNativeVlcSupported, launchNativeVlc } from '../services/fluxVlcPlayer';
 
 export const PlayerView: React.FC = () => {
-  const { state, setPage, updateProgress } = useFlux();
+  const { state, setPage, updateProgress, playMedia, updateSettings } = useFlux();
   const current = state.currentPlaying;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -61,7 +61,7 @@ export const PlayerView: React.FC = () => {
   const [tracksPopupOpen, setTracksPopupOpen] = useState(false);
   const [selectedAudioTrack, setSelectedAudioTrack] = useState('English');
   const [selectedSubtitleTrack, setSelectedSubtitleTrack] = useState('English');
-  const [autoplayNext, setAutoplayNext] = useState(true);
+  const [autoplayNext, setAutoplayNext] = useState(state.settings.autoplayNext);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [osd, setOsd] = useState<{ text: string; level: number; visible: boolean }>({
@@ -75,6 +75,7 @@ export const PlayerView: React.FC = () => {
     visible: false,
     timeMs: 0
   });
+  const [nativeResumeChoice, setNativeResumeChoice] = useState<'ask' | 'resume' | 'start'>('ask');
 
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const osdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -90,20 +91,21 @@ export const PlayerView: React.FC = () => {
   useEffect(() => {
     setSelectedSourceIdx(0);
     setHasError(false);
+    setNativeResumeChoice('ask');
   }, [current?.url]);
 
   // Check saved resume position
   useEffect(() => {
     if (!current) return;
     const historyItem = state.history.find((h) => h.url === current.url);
-    if (historyItem && historyItem.timestampMs > 15000 && historyItem.progressFraction < 0.92) {
+    if (state.settings.resumePlayback && historyItem && historyItem.timestampMs > 15000 && historyItem.progressFraction < 0.92) {
       setResumeToast({ visible: true, timeMs: historyItem.timestampMs });
       const timer = setTimeout(() => {
         setResumeToast((prev) => ({ ...prev, visible: false }));
       }, 7000);
       return () => clearTimeout(timer);
     }
-  }, [current?.url]);
+  }, [current?.url, state.settings.resumePlayback]);
 
   // Native Android Embedded LibVLC Player
   useEffect(() => {
@@ -111,7 +113,9 @@ export const PlayerView: React.FC = () => {
 
     let isCancelled = false;
     const historyItem = state.history.find((h) => h.url === current.url);
-    const resumePos = historyItem && historyItem.progressFraction < 0.95 ? historyItem.timestampMs : 0;
+    const hasSavedPosition = state.settings.resumePlayback && historyItem && historyItem.timestampMs > 15000 && historyItem.progressFraction < 0.92;
+    if (hasSavedPosition && nativeResumeChoice === 'ask') return;
+    const resumePos = nativeResumeChoice === 'resume' && historyItem && historyItem.progressFraction < 0.95 ? historyItem.timestampMs : 0;
 
     const sources = availableSources.map((s) => ({
       name: s.name,
@@ -132,7 +136,23 @@ export const PlayerView: React.FC = () => {
         if (res.durationMs > 0) {
           updateProgress(current.url, res.positionMs, res.durationMs);
         }
-        setPage(state.pageBeforePlayer || 'search');
+
+        // The native activity returns for both a completed video and a manual
+        // back/cancel action. Only advance the queue when VLC reports that the
+        // file actually reached the end. A manual back must restore the page
+        // (and its folder context) instead of being mistaken for completion.
+        if (!res.completed) {
+          setPage(state.pageBeforePlayer || 'search');
+          return;
+        }
+
+        const currentIndex = state.playQueue.findIndex((item) => item.playUrl === current.url);
+        const next = state.settings.autoplayNext && currentIndex >= 0 ? state.playQueue[currentIndex + 1] : undefined;
+        if (next) {
+          playMedia(next.playUrl, next.title, next.playUrl, !!next.localPath, undefined, next.embedUrl, next.trailerUrl, next.sources);
+        } else {
+          setPage(state.pageBeforePlayer || 'search');
+        }
       })
       .catch((err) => {
         console.error('Native VLC Player error:', err);
@@ -145,7 +165,7 @@ export const PlayerView: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [current?.url, activeSource?.url]);
+  }, [current?.url, activeSource?.url, nativeResumeChoice, state.settings.resumePlayback]);
 
   const isEmbed =
     activeSource?.type === 'embed' ||
@@ -248,6 +268,15 @@ export const PlayerView: React.FC = () => {
       setHasError(true);
       setErrorMessage('Direct video playback failed. Please try an alternative mirror.');
     };
+    const handleEnded = () => {
+      const currentIndex = current?.url ? state.playQueue.findIndex((item) => item.playUrl === current.url) : -1;
+      const next = state.settings.autoplayNext && currentIndex >= 0 ? state.playQueue[currentIndex + 1] : undefined;
+      if (next) {
+        playMedia(next.playUrl, next.title, next.playUrl, !!next.localPath, undefined, next.embedUrl, next.trailerUrl, next.sources);
+      } else if (current?.url) {
+        updateProgress(current.url, duration, duration);
+      }
+    };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('play', handlePlay);
@@ -255,6 +284,7 @@ export const PlayerView: React.FC = () => {
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('playing', handlePlaying);
     video.addEventListener('error', handleError);
+    video.addEventListener('ended', handleEnded);
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
@@ -263,8 +293,9 @@ export const PlayerView: React.FC = () => {
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('playing', handlePlaying);
       video.removeEventListener('error', handleError);
+      video.removeEventListener('ended', handleEnded);
     };
-  }, [current, activeSource, isEmbed, isMkv]);
+  }, [current, activeSource, isEmbed, isMkv, state.playQueue, state.settings.autoplayNext, duration]);
 
   // Controls auto-hide matching hideControlsTimer
   const wakeControls = () => {
@@ -405,6 +436,22 @@ export const PlayerView: React.FC = () => {
   const videoQuality = qualityLabel(1920, 1080);
 
   if (isNativeVlcSupported()) {
+    const nativeHistory = current ? state.history.find((h) => h.url === current.url) : undefined;
+    const hasNativeResume = state.settings.resumePlayback && nativeHistory && nativeHistory.timestampMs > 15000 && nativeHistory.progressFraction < 0.92;
+    if (hasNativeResume && nativeResumeChoice === 'ask') {
+      return (
+        <div className="fixed inset-0 z-50 bg-[#0B0B0E] flex flex-col items-center justify-center text-white p-6 select-none">
+          <div className="w-14 h-14 rounded-2xl bg-[#1E1F22] border border-[#2B2D31] flex items-center justify-center mb-5 text-[#5865F2] text-2xl">▶</div>
+          <h2 className="text-lg font-bold text-center max-w-md line-clamp-2">Continue {current?.title}?</h2>
+          <p className="mt-2 mb-6 text-xs text-[#949BA4]">You stopped at {formatTime(nativeHistory.timestampMs)}.</p>
+          <div className="flex gap-3">
+            <button onClick={() => setNativeResumeChoice('resume')} className="px-5 py-2.5 rounded-full bg-[#5865F2] text-xs font-bold">Resume</button>
+            <button onClick={() => setNativeResumeChoice('start')} className="px-5 py-2.5 rounded-full bg-[#1E1F22] border border-[#383A40] text-xs font-semibold">Start over</button>
+          </div>
+          <button onClick={handleBack} className="mt-5 text-xs text-[#949BA4]">Cancel</button>
+        </div>
+      );
+    }
     return (
       <div className="fixed inset-0 z-50 bg-[#0B0B0E] flex flex-col items-center justify-center text-white p-6 select-none">
         <div className="w-16 h-16 rounded-2xl bg-[#1E1F22] border border-[#2B2D31] flex items-center justify-center mb-6 shadow-2xl">
@@ -971,8 +1018,10 @@ export const PlayerView: React.FC = () => {
             </div>
             <button
               onClick={() => {
-                setAutoplayNext(!autoplayNext);
-                showOsd(!autoplayNext ? 'Autoplay Next Enabled' : 'Autoplay Next Disabled');
+                const nextValue = !autoplayNext;
+                setAutoplayNext(nextValue);
+                updateSettings({ autoplayNext: nextValue });
+                showOsd(nextValue ? 'Autoplay Next Enabled' : 'Autoplay Next Disabled');
               }}
               className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer p-0.5 ${
                 autoplayNext ? 'bg-[#5865F2]' : 'bg-[#383A40]'
